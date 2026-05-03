@@ -1,0 +1,12 @@
+.venv
+venv/
+venv2/
+__pycache__/
+*.pyc
+node_modules/
+.playwright-mcp/
+playwright-browsers/
+test-results/
+*.log
+.claude/
+fund_data/
