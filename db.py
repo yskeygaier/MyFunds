@@ -175,6 +175,11 @@ class DatabasePool:
 pool = None
 
 
+def get_pool():
+    """获取当前连接池单例（总是返回最新值，不捕获导入时的 None）"""
+    return pool
+
+
 def init(mysql_config, sqlite_db_path, pool_size=5):
     """初始化数据库模块（app 启动时调用一次）"""
     global pool, SQLITE_DB_PATH, _MYSQL_CONFIG

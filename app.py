@@ -61,13 +61,11 @@ except Exception as e:
     print(f"Redis不可用，使用内存缓存: {e}")
 
 # MySQL 连接池 — 统一由 db.py 管理
-from db import init as _db_init, pool as _db_pool
+from db import init as _db_init, get_pool
 
 def get_mysql_pool():
     """获取 MySQL 连接池（兼容旧接口）"""
-    if _db_pool is None:
-        return None
-    return _db_pool
+    return get_pool()
 
 # 内存缓存作为备选
 from cache import ThreadSafeCache
