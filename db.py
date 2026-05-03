@@ -208,7 +208,7 @@ def _sqlite_execute(sql, params=None, fetch=True):
             rows = [dict(r) for r in cur.fetchall()]
         elif fetch:
             conn.commit()
-            rows = cur.lastrowid
+            rows = cur.rowcount
         else:
             conn.commit()
             rows = cur.rowcount
