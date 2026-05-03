@@ -103,7 +103,6 @@ class DatabasePool:
             print(f"[db] MySQL error: {e}, falling back to SQLite")
             if conn:
                 try:
-                    conn.invalidate()
                     conn.rollback()
                 except Exception:
                     pass
