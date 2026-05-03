@@ -60,79 +60,14 @@ except Exception as e:
     REDIS_AVAILABLE = False
     print(f"Redis不可用，使用内存缓存: {e}")
 
-# MySQL 连接池
-# ── MySQL 连接管理（使用 pymysql）──────────────────────────────
-import pymysql as _pymysql
-
-def _create_mysql_conn():
-    """创建单个MySQL连接"""
-    return _pymysql.connect(
-        user='yskey',
-        password='yskey',
-        host='127.0.0.1',
-        port=3306,
-        database='fund_data',
-        charset='utf8mb4',
-        ssl_disabled=True,
-        cursorclass=_pymysql.cursors.DictCursor
-    )
-
-# MySQL连接池：包装 pymysql，提供与 mysql.connector 相似的 API
-class _MySQLPool:
-    """简单连接池，模拟 mysql.connector.connectionpool.MySQLConnectionPool"""
-    def __init__(self, pool_size=5):
-        self._pool = []
-        self._size = pool_size
-        for _ in range(pool_size):
-            self._pool.append(_create_mysql_conn())
-
-    def get_connection(self):
-        """从池中获取连接（自动归还）"""
-        return _PooledMySQLConn(self._pool)
-
-
-class _PooledMySQLConn:
-    """包装连接，从池借出，用完归还"""
-    def __init__(self, pool):
-        self._conn = pool.pop() if pool else _create_mysql_conn()
-        self._pool = pool
-
-    def cursor(self, dictionary=False):
-        return self._conn.cursor()
-
-    def commit(self):
-        self._conn.commit()
-
-    def close(self):
-        if self._pool is not None and len(self._pool) < 10:
-            self._pool.append(self._conn)
-        else:
-            self._conn.close()
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        self.close()
-
-
-_MYSQL_POOL = None
+# MySQL 连接池 — 统一由 db.py 管理
+from db import init as _db_init, pool as _db_pool
 
 def get_mysql_pool():
-    """获取 MySQL 连接池（延迟初始化）"""
-    global _MYSQL_POOL
-    if _MYSQL_POOL is not None:
-        return _MYSQL_POOL
-    try:
-        # 测试连接
-        test_conn = _create_mysql_conn()
-        test_conn.close()
-        _MYSQL_POOL = _MySQLPool(pool_size=5)
-        print("MySQL连接池初始化成功")
-        return _MYSQL_POOL
-    except Exception as e:
-        print(f"MySQL连接池初始化失败: {e}")
+    """获取 MySQL 连接池（兼容旧接口）"""
+    if _db_pool is None:
         return None
+    return _db_pool
 
 # 内存缓存作为备选
 from cache import ThreadSafeCache
@@ -3569,6 +3504,20 @@ def _http_fetch_fund_list_via_eastmoney() -> dict:
 if __name__ == '__main__':
     print('Starting Flask application...')
     try:
+        # 初始化数据库连接池
+        _db_init(
+            mysql_config={
+                'user': 'yskey',
+                'password': 'yskey',
+                'host': '127.0.0.1',
+                'port': 3306,
+                'database': 'fund_data',
+                'charset': 'utf8mb4',
+                'ssl_disabled': True,
+            },
+            sqlite_db_path=SQLITE_DB_PATH,
+            pool_size=5
+        )
         # 初始化分析报告历史库（MySQL建表）
         _init_analysis_history_table()
         # 启动时预热热点基金分析报告（后台异步）
