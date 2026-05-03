@@ -135,7 +135,8 @@ def get_mysql_pool():
         return None
 
 # 内存缓存作为备选
-memory_cache = {}
+from cache import ThreadSafeCache
+memory_cache = ThreadSafeCache(name="memory")
 
 # 搜索结果缓存（短期，5分钟）
 search_cache = {}
@@ -213,11 +214,11 @@ def set_cache(key, data, expiry=3600):
         if REDIS_AVAILABLE:
             r.setex(key, expiry, serialized)
         else:
-            memory_cache[key] = data
+            memory_cache.set(key, data)
     except Exception:
         # 缓存写入失败不影响主流程，降级到内存
         try:
-            memory_cache[key] = data
+            memory_cache.set(key, data)
         except Exception:
             pass
 
@@ -227,8 +228,7 @@ def delete_cache(key):
         if REDIS_AVAILABLE:
             r.delete(key)
         else:
-            if key in memory_cache:
-                del memory_cache[key]
+            memory_cache.delete(key)
     except Exception as e:
         print(f"删除缓存失败: {e}")
 
@@ -3109,7 +3109,7 @@ def get_fund_list_from_cache():
 
     # 2. 再查内存缓存
     if cache_key in memory_cache:
-        fund_list = memory_cache[cache_key]
+        fund_list = memory_cache.get(cache_key)
         if not fund_list_index:
             rebuild_fund_list_index(fund_list)
         return fund_list
@@ -3123,7 +3123,7 @@ def save_fund_list_to_cache(fund_list):
     expiry = CACHE_CONFIG['fund_list']['expiry']
 
     # 保存到内存缓存
-    memory_cache[cache_key] = fund_list
+    memory_cache.set(cache_key, fund_list)
 
     # 重建索引
     rebuild_fund_list_index(fund_list)
@@ -3196,7 +3196,7 @@ def load_fund_list_from_db():
             fund_list[code] = name
 
     if fund_list:
-        memory_cache[cache_key] = fund_list
+        memory_cache.set(cache_key, fund_list)
 
     return fund_list
 
@@ -3216,8 +3216,8 @@ def get_fund_manager():
                 return jsonify({'success': True, 'data': json.loads(data), 'from_cache': True})
         except Exception:
             pass
-    elif cache_key in memory_cache and (datetime.now() - memory_cache[cache_key]['ts']).seconds < 3600:
-        return jsonify({'success': True, 'data': memory_cache[cache_key]['data'], 'from_cache': True})
+    elif cache_key in memory_cache and (datetime.now() - memory_cache.get(cache_key)['ts']).seconds < 3600:
+        return jsonify({'success': True, 'data': memory_cache.get(cache_key)['data'], 'from_cache': True})
 
     # 2. 回源
     manager_info = fetch_manager_info_with_timeout(fund_code, timeout=8)
@@ -3231,7 +3231,7 @@ def get_fund_manager():
             except Exception:
                 pass
         else:
-            memory_cache[cache_key] = {'data': manager_info, 'ts': datetime.now()}
+            memory_cache.set(cache_key, {'data': manager_info, 'ts': datetime.now()})
         return jsonify({'success': True, 'data': manager_info})
     return jsonify({'success': False, 'message': '暂无基金经理数据'})
 

@@ -691,7 +691,8 @@ def crawl_fund_full(fund_code: str) -> dict:
 
 
 # NAV 历史缓存（减少重复 HTTP 请求）
-_nav_cache = {}  # {(fund_code, years): (timestamp, [records])}
+from cache import ThreadSafeCache
+_nav_cache = ThreadSafeCache(name="nav")
 
 
 def crawl_fund_nav_df(fund_code: str, years: int = None) -> list:
@@ -706,17 +707,16 @@ def crawl_fund_nav_df(fund_code: str, years: int = None) -> list:
 
     # 估值场景缓存 5 分钟，回测场景缓存 30 分钟
     ttl = 300 if years <= 1 else 1800
-    if cache_key in _nav_cache:
-        cached_time, cached_data = _nav_cache[cache_key]
-        if now - cached_time < ttl:
-            return cached_data
+    cached = _nav_cache.get(cache_key)
+    if cached is not None:
+        return cached
 
     data = _fetch_nav_history_via_http(fund_code, years)
     nav_df = data.get('nav_df')
 
     if nav_df is not None and len(nav_df) > 0:
         result = nav_df.to_dict('records')
-        _nav_cache[cache_key] = (now, result)
+        _nav_cache.set(cache_key, result, ttl=ttl)
         return result
 
     # fallback: 返回内存构建的列表
