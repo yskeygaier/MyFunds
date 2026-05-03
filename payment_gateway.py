@@ -13,6 +13,7 @@ import urllib.parse
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 from flask import request, jsonify
+from db import db_execute
 
 # ── 支付配置（配置实际商户信息后即可上线）─────────────────────
 
@@ -50,19 +51,6 @@ PLANS = {
 }
 
 
-# ══════════════════════════════════════════════════════════════
-# 延迟导入
-# ══════════════════════════════════════════════════════════════
-
-_get_mysql_pool = None
-_SQLITE_DB_PATH = None
-
-def _ensure_deps():
-    global _get_mysql_pool, _SQLITE_DB_PATH
-    if _get_mysql_pool is None:
-        import app
-        _get_mysql_pool = app.get_mysql_pool
-        _SQLITE_DB_PATH = app.SQLITE_DB_PATH
 
 
 # ══════════════════════════════════════════════════════════════
@@ -71,69 +59,16 @@ def _ensure_deps():
 
 def _store_payment_result(poll_token, result_data):
     """存储支付结果，供前端轮询获取"""
-    _ensure_deps()
     import app
     app.set_cache(f"pay:result:{poll_token}", result_data, expiry=900)
 
 
 def _get_payment_result(poll_token):
     """获取支付结果"""
-    _ensure_deps()
     import app
     return app.get_cache(f"pay:result:{poll_token}")
 
 
-def _db_execute(sql, params=None, fetch=True):
-    _ensure_deps()
-    pool = _get_mysql_pool()
-    if pool is not None:
-        conn = None
-        try:
-            conn = pool.get_connection()
-            cur = conn.cursor()
-            cur.execute(sql, params or ())
-            if fetch and sql.strip().upper().startswith('SELECT'):
-                rows = cur.fetchall()
-            elif fetch:
-                conn.commit()
-                rows = cur.lastrowid
-            else:
-                conn.commit()
-                rows = None
-            cur.close()
-            return rows
-        except Exception as e:
-            print(f"[payment] MySQL error: {e}")
-        finally:
-            if conn:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
-    return _sqlite_execute(sql, params, fetch)
-
-
-def _sqlite_execute(sql, params=None, fetch=True):
-    import sqlite3
-    sql = sql.replace('%s', '?')
-    sql = sql.replace('ON UPDATE CURRENT_TIMESTAMP', '')
-    conn = sqlite3.connect(_SQLITE_DB_PATH)
-    conn.row_factory = sqlite3.Row
-    try:
-        cur = conn.cursor()
-        cur.execute(sql, params or ())
-        if fetch and sql.strip().upper().startswith('SELECT'):
-            rows = [dict(r) for r in cur.fetchall()]
-        elif fetch:
-            conn.commit()
-            rows = cur.lastrowid
-        else:
-            conn.commit()
-            rows = None
-        cur.close()
-        return rows
-    finally:
-        conn.close()
 
 
 # ══════════════════════════════════════════════════════════════
@@ -202,7 +137,7 @@ def create_alipay_order(email_or_wechat, plan_type):
     params['sign'] = sign
 
     # 保存订单（暂存email/wechat到payment_method字段，支付成功后使用）
-    _db_execute(
+    db_execute(
         "INSERT INTO user_subscriptions (user_id, plan_type, amount, payment_method, "
         "payment_status, out_trade_no, poll_token) VALUES (%s, %s, %s, %s, %s, %s, %s)",
         (None, plan_type, plan['price'], f'alipay|{email_or_wechat}', 'pending', out_trade_no, poll_token), fetch=False)
@@ -235,7 +170,7 @@ def verify_alipay_notify(notify_data):
         return False, f"交易状态: {trade_status}"
 
     # 查找订单
-    rows = _db_execute(
+    rows = db_execute(
         "SELECT * FROM user_subscriptions WHERE out_trade_no=%s",
         (out_trade_no,), fetch=True)
     if not rows:
@@ -265,11 +200,11 @@ def verify_alipay_notify(notify_data):
     credentials = create_subscription_user(contact or 'user@example.com', plan_type, end_str)
 
     # 获取用户ID
-    uid_rows = _db_execute("SELECT id FROM users WHERE username=%s", (credentials['username'],), fetch=True)
+    uid_rows = db_execute("SELECT id FROM users WHERE username=%s", (credentials['username'],), fetch=True)
     uid = uid_rows[0]['id'] if uid_rows else 0
 
     # 更新订阅记录
-    _db_execute(
+    db_execute(
         "UPDATE user_subscriptions SET payment_status='paid', user_id=%s, "
         "start_date=%s, end_date=%s WHERE out_trade_no=%s",
         (uid, now.strftime('%Y-%m-%d %H:%M:%S'), end_str, out_trade_no), fetch=False)
@@ -368,7 +303,7 @@ def create_wechat_order(email_or_wechat, plan_type):
 
     if return_code == 'SUCCESS' and result_code == 'SUCCESS' and code_url:
         # 保存订单
-        _db_execute(
+        db_execute(
             "INSERT INTO user_subscriptions (user_id, plan_type, amount, payment_method, "
             "payment_status, out_trade_no, poll_token) VALUES (%s, %s, %s, %s, %s, %s, %s)",
             (None, plan_type, plan['price'], f'wechat|{email_or_wechat}', 'pending', out_trade_no, poll_token), fetch=False)
@@ -386,7 +321,7 @@ def create_wechat_order(email_or_wechat, plan_type):
         }
     else:
         # 微信API失败时仍保存订单用于调试
-        _db_execute(
+        db_execute(
             "INSERT INTO user_subscriptions (user_id, plan_type, amount, payment_method, "
             "payment_status, out_trade_no, poll_token) VALUES (%s, %s, %s, %s, %s, %s, %s)",
             (None, plan_type, plan['price'], f'wechat|{email_or_wechat}', 'pending', out_trade_no, poll_token), fetch=False)
@@ -411,7 +346,7 @@ def verify_wechat_notify(notify_xml):
         if return_code != 'SUCCESS' or result_code != 'SUCCESS':
             return False, "支付未成功"
 
-        rows = _db_execute(
+        rows = db_execute(
             "SELECT * FROM user_subscriptions WHERE out_trade_no=%s",
             (out_trade_no,), fetch=True)
         if not rows:
@@ -441,11 +376,11 @@ def verify_wechat_notify(notify_xml):
         credentials = create_subscription_user(contact or 'user@example.com', plan_type, end_str)
 
         # 获取用户ID
-        uid_rows = _db_execute("SELECT id FROM users WHERE username=%s", (credentials['username'],), fetch=True)
+        uid_rows = db_execute("SELECT id FROM users WHERE username=%s", (credentials['username'],), fetch=True)
         uid = uid_rows[0]['id'] if uid_rows else 0
 
         # 更新订阅记录
-        _db_execute(
+        db_execute(
             "UPDATE user_subscriptions SET payment_status='paid', user_id=%s, "
             "start_date=%s, end_date=%s WHERE out_trade_no=%s",
             (uid, now.strftime('%Y-%m-%d %H:%M:%S'), end_str, out_trade_no), fetch=False)
@@ -485,7 +420,7 @@ def get_payment_status(poll_token):
     if result:
         return {'success': True, **result}
     # 回退查DB
-    rows = _db_execute(
+    rows = db_execute(
         "SELECT * FROM user_subscriptions WHERE poll_token=%s",
         (poll_token,), fetch=True)
     if rows and rows[0]['payment_status'] == 'paid':
@@ -557,7 +492,7 @@ def _send_credentials_async(contact, credentials, plan):
 
 def mock_pay(out_trade_no):
     """模拟支付完成 + 自动创建订阅用户"""
-    rows = _db_execute(
+    rows = db_execute(
         "SELECT * FROM user_subscriptions WHERE out_trade_no=%s",
         (out_trade_no,), fetch=True)
     if not rows:
@@ -605,14 +540,14 @@ def mock_pay(out_trade_no):
     credentials = create_subscription_user(contact or 'user@example.com', plan_type, end_str)
 
     # 更新订单关联用户
-    uid = _db_execute("SELECT id FROM users WHERE username=%s", (credentials['username'],), fetch=True)
+    uid = db_execute("SELECT id FROM users WHERE username=%s", (credentials['username'],), fetch=True)
     if uid:
         uid = uid[0]['id']
     else:
         uid = 0
 
     poll_token = order.get('poll_token', '')
-    _db_execute(
+    db_execute(
         "UPDATE user_subscriptions SET payment_status='paid', user_id=%s, "
         "start_date=%s, end_date=%s WHERE out_trade_no=%s",
         (uid, now.strftime('%Y-%m-%d %H:%M:%S'), end_str, out_trade_no), fetch=False)
@@ -654,7 +589,7 @@ def mock_pay(out_trade_no):
 # ══════════════════════════════════════════════════════════════
 
 def get_user_orders(user_id):
-    rows = _db_execute(
+    rows = db_execute(
         "SELECT * FROM user_subscriptions WHERE user_id=%s ORDER BY created_at DESC LIMIT 20",
         (user_id,), fetch=True)
     if not rows:
@@ -675,7 +610,7 @@ def get_user_orders(user_id):
 def get_user_active_sub(user_id):
     """获取用户当前有效订阅"""
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    rows = _db_execute(
+    rows = db_execute(
         "SELECT * FROM user_subscriptions WHERE user_id=%s AND payment_status='paid' "
         "AND end_date > %s ORDER BY end_date DESC LIMIT 1",
         (user_id, now), fetch=True)

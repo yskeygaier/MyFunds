@@ -10,21 +10,8 @@ import json
 from datetime import datetime, timedelta
 from functools import wraps
 from flask import request, jsonify, session
+from db import db_execute
 
-# ── 延迟导入 app 工具函数 ────────────────────────────────────
-_get_mysql_pool = None
-_get_cache = None
-_set_cache = None
-_SQLITE_DB_PATH = None
-
-def _ensure_deps():
-    global _get_mysql_pool, _get_cache, _set_cache, _SQLITE_DB_PATH
-    if _get_mysql_pool is None:
-        import app
-        _get_mysql_pool = app.get_mysql_pool
-        _get_cache = app.get_cache
-        _set_cache = app.set_cache
-        _SQLITE_DB_PATH = app.SQLITE_DB_PATH
 
 
 # ══════════════════════════════════════════════════════════════
@@ -123,70 +110,10 @@ _SQLITE_LOGIN_LOGS = '''
 '''
 
 
-# ══════════════════════════════════════════════════════════════
-# 数据库操作
-# ══════════════════════════════════════════════════════════════
-
-def _db_execute(sql, params=None, fetch=True):
-    _ensure_deps()
-    pool = _get_mysql_pool()
-    if pool is not None:
-        conn = None
-        try:
-            conn = pool.get_connection()
-            cur = conn.cursor()
-            cur.execute(sql, params or ())
-            if fetch and sql.strip().upper().startswith('SELECT'):
-                rows = cur.fetchall()
-            elif fetch:
-                conn.commit()
-                rows = cur.lastrowid
-            else:
-                conn.commit()
-                rows = None
-            cur.close()
-            return rows
-        except Exception as e:
-            print(f"[auth] MySQL error: {e}, fallback to SQLite")
-        finally:
-            if conn:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
-    return _sqlite_execute(sql, params, fetch)
-
-
-def _sqlite_execute(sql, params=None, fetch=True):
-    import sqlite3
-    sql = sql.replace('%s', '?')
-    sql = sql.replace('ON UPDATE CURRENT_TIMESTAMP', '')
-    sql = sql.replace('AUTO_INCREMENT', 'AUTOINCREMENT')
-    sql = sql.replace('TINYINT(1)', 'INTEGER')
-    sql = sql.replace('DECIMAL(10,2)', 'REAL')
-    sql = sql.replace('ENGINE=InnoDB DEFAULT CHARSET=utf8mb4', '')
-    conn = sqlite3.connect(_SQLITE_DB_PATH)
-    conn.row_factory = sqlite3.Row
-    try:
-        cur = conn.cursor()
-        cur.execute(sql, params or ())
-        if fetch and sql.strip().upper().startswith('SELECT'):
-            rows = [dict(r) for r in cur.fetchall()]
-        elif fetch and ('INSERT' in sql.upper() or 'UPDATE' in sql.upper() or 'DELETE' in sql.upper()):
-            conn.commit()
-            rows = cur.lastrowid
-        else:
-            conn.commit()
-            rows = None
-        cur.close()
-        return rows
-    finally:
-        conn.close()
 
 
 def init_auth_tables():
     """初始化认证相关数据库表"""
-    _ensure_deps()
     tables = {
         'users': (_MYSQL_USERS, _SQLITE_USERS),
         'user_subscriptions': (_MYSQL_USER_SUBSCRIPTIONS, _SQLITE_USER_SUBSCRIPTIONS),
@@ -194,17 +121,18 @@ def init_auth_tables():
     }
     for name, (mysql_sql, _) in tables.items():
         try:
-            _db_execute(mysql_sql, fetch=False)
+            db_execute(mysql_sql, fetch=False)
             print(f"[auth] MySQL table '{name}' OK")
         except Exception as e:
             print(f"[auth] MySQL table '{name}' failed: {e}")
     # 兼容旧表：添加可能缺失的新列
     _migrate_users_table()
     # SQLite fallback
-    if _SQLITE_DB_PATH:
+    import app as _app
+    if _app.SQLITE_DB_PATH:
         import sqlite3 as _sq
         try:
-            conn = _sq.connect(_SQLITE_DB_PATH)
+            conn = _sq.connect(_app.SQLITE_DB_PATH)
             for name, (_, sqlite_sql) in tables.items():
                 try:
                     conn.execute(sqlite_sql)
@@ -266,26 +194,26 @@ def _migrate_users_table():
     }
     for col, col_type in new_columns.items():
         try:
-            _db_execute(f"ALTER TABLE users ADD COLUMN {col} {col_type}", fetch=False)
+            db_execute(f"ALTER TABLE users ADD COLUMN {col} {col_type}", fetch=False)
             print(f"[auth] Added column users.{col}")
         except Exception:
             pass  # 列已存在
     try:
-        _db_execute("ALTER TABLE user_subscriptions ADD COLUMN contact VARCHAR(200)", fetch=False)
+        db_execute("ALTER TABLE user_subscriptions ADD COLUMN contact VARCHAR(200)", fetch=False)
     except Exception:
         pass
     try:
-        _db_execute("ALTER TABLE user_subscriptions ADD COLUMN poll_token VARCHAR(64)", fetch=False)
+        db_execute("ALTER TABLE user_subscriptions ADD COLUMN poll_token VARCHAR(64)", fetch=False)
     except Exception:
         pass
 
 
 def _ensure_default_admin():
     """确保默认管理员账户存在"""
-    existing = _db_execute("SELECT id FROM users WHERE username='admin'", fetch=True)
+    existing = db_execute("SELECT id FROM users WHERE username='admin'", fetch=True)
     if not existing or len(existing) == 0:
         pw_hash = _hash_password('Admin@123')
-        _db_execute(
+        db_execute(
             "INSERT INTO users (username, password_hash, display_name, must_change_password, is_admin) "
             "VALUES (%s, %s, %s, %s, %s)",
             ('admin', pw_hash, '系统管理员', 1, 1), fetch=False)
@@ -293,14 +221,14 @@ def _ensure_default_admin():
 
 
 def get_user_by_id(user_id):
-    rows = _db_execute(
+    rows = db_execute(
         "SELECT * FROM users WHERE id=%s",
         (user_id,), fetch=True)
     return rows[0] if rows else None
 
 
 def get_user_by_username(username):
-    rows = _db_execute(
+    rows = db_execute(
         "SELECT * FROM users WHERE username=%s AND is_active=1",
         (username,), fetch=True)
     return rows[0] if rows else None
@@ -368,7 +296,7 @@ def portfolio_access_required(f):
 
 def _get_portfolio_settings():
     try:
-        rows = _db_execute("SELECT * FROM portfolio_settings WHERE id=1", fetch=True)
+        rows = db_execute("SELECT * FROM portfolio_settings WHERE id=1", fetch=True)
         if rows and len(rows) > 0:
             r = rows[0]
             return {
@@ -385,7 +313,7 @@ def _get_portfolio_settings():
 def _get_user_active_subscription(user_id):
     """获取用户当前有效订阅"""
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    rows = _db_execute(
+    rows = db_execute(
         "SELECT * FROM user_subscriptions WHERE user_id=%s AND payment_status='paid' "
         "AND end_date > %s ORDER BY end_date DESC LIMIT 1",
         (user_id, now), fetch=True)
@@ -399,7 +327,7 @@ def _get_user_active_subscription(user_id):
 def check_and_lock_expired_accounts():
     """检查并锁定所有已过期账户"""
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    _db_execute(
+    db_execute(
         "UPDATE users SET is_active=0 WHERE account_expiry IS NOT NULL "
         "AND account_expiry < %s AND is_active=1 AND created_by_subscription=1",
         (now,), fetch=False)
@@ -414,7 +342,7 @@ def check_account_expiry(user_id):
         try:
             expiry = datetime.strptime(str(user['account_expiry'])[:19], '%Y-%m-%d %H:%M:%S')
             if datetime.now() > expiry:
-                _db_execute("UPDATE users SET is_active=0 WHERE id=%s", (user_id,), fetch=False)
+                db_execute("UPDATE users SET is_active=0 WHERE id=%s", (user_id,), fetch=False)
                 return False  # 已过期
         except Exception:
             pass
@@ -426,7 +354,7 @@ def create_subscription_user(email_or_wechat, plan_type, plan_end_date):
     import uuid
     # 生成用户名：sub_随机6位
     username = f"sub_{uuid.uuid4().hex[:6]}"
-    while _db_execute("SELECT id FROM users WHERE username=%s", (username,), fetch=True):
+    while db_execute("SELECT id FROM users WHERE username=%s", (username,), fetch=True):
         username = f"sub_{uuid.uuid4().hex[:6]}"
     # 生成随机密码
     password = uuid.uuid4().hex[:8] + "A1"
@@ -437,7 +365,7 @@ def create_subscription_user(email_or_wechat, plan_type, plan_end_date):
     email = email_or_wechat if is_email else ''
     wechat = email_or_wechat if not is_email else ''
 
-    _db_execute(
+    db_execute(
         "INSERT INTO users (username, password_hash, display_name, email, wechat, "
         "must_change_password, is_active, is_admin, account_expiry, created_by_subscription) "
         "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
@@ -467,12 +395,12 @@ def handle_login():
     user = get_user_by_username(username)
     ip = request.remote_addr or '127.0.0.1'
     if not user:
-        _db_execute(
+        db_execute(
             "INSERT INTO login_logs (username, ip_address, success) VALUES (%s, %s, 0)",
             (username, ip), fetch=False)
         return jsonify({'success': False, 'error': '用户名或密码错误'})
     if not _verify_password(password, user['password_hash']):
-        _db_execute(
+        db_execute(
             "INSERT INTO login_logs (user_id, username, ip_address, success) VALUES (%s, %s, %s, 0)",
             (user['id'], username, ip), fetch=False)
         return jsonify({'success': False, 'error': '用户名或密码错误'})
@@ -485,10 +413,10 @@ def handle_login():
     session['display_name'] = user.get('display_name', '') or user['username']
     session['is_admin'] = bool(user.get('is_admin', 0))
     session.permanent = True
-    _db_execute(
+    db_execute(
         "UPDATE users SET last_login=%s WHERE id=%s",
         (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), user['id']), fetch=False)
-    _db_execute(
+    db_execute(
         "INSERT INTO login_logs (user_id, username, ip_address, success) VALUES (%s, %s, %s, 1)",
         (user['id'], username, ip), fetch=True)
     return jsonify({
@@ -527,7 +455,7 @@ def handle_change_password():
     if not _verify_password(old_password, user['password_hash']):
         return jsonify({'success': False, 'error': '旧密码错误'})
     new_hash = _hash_password(new_password)
-    _db_execute(
+    db_execute(
         "UPDATE users SET password_hash=%s, must_change_password=0 WHERE id=%s",
         (new_hash, session['user_id']), fetch=False)
     return jsonify({

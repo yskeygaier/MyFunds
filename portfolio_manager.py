@@ -16,6 +16,7 @@ from io import BytesIO
 import pandas as pd
 import numpy as np
 from flask import request, jsonify, session
+from db import db_execute
 
 # ── 延迟导入以避免循环依赖 ────────────────────────────────────
 _get_mysql_pool = None
@@ -346,80 +347,16 @@ _SQLITE_TABLES = {
 }
 
 
-def _ensure_deps():
-    if _get_mysql_pool is None:
-        _init_deps()
-
-
-def _db_execute(sql, params=None, fetch=True):
-    """执行 MySQL 查询，自动降级到 SQLite"""
-    _ensure_deps()
-    pool = _get_mysql_pool()
-    if pool is not None:
-        conn = None
-        try:
-            conn = pool.get_connection()
-            cur = conn.cursor()
-            cur.execute(sql, params or ())
-            if fetch and sql.strip().upper().startswith('SELECT'):
-                rows = cur.fetchall()
-            elif fetch:
-                conn.commit()
-                rows = cur.lastrowid
-            else:
-                conn.commit()
-                rows = cur.lastrowid
-            cur.close()
-            return rows
-        except Exception as e:
-            print(f"[portfolio] MySQL error: {e}, falling back to SQLite")
-        finally:
-            if conn:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
-    return _sqlite_execute(sql, params, fetch)
-
-
-def _sqlite_execute(sql, params=None, fetch=True):
-    import sqlite3
-    sql = sql.replace('%s', '?')
-    sql = sql.replace('ON UPDATE CURRENT_TIMESTAMP', '')
-    sql = sql.replace('AUTO_INCREMENT', 'AUTOINCREMENT')
-    sql = sql.replace('LONGTEXT', 'TEXT')
-    sql = sql.replace('TINYINT(1)', 'INTEGER')
-    sql = sql.replace('DECIMAL(10,2)', 'REAL')
-    sql = sql.replace('DECIMAL(5,2)', 'REAL')
-    sql = sql.replace('DECIMAL(10,4)', 'REAL')
-    sql = sql.replace('ENGINE=InnoDB DEFAULT CHARSET=utf8mb4', '')
-    conn = sqlite3.connect(_SQLITE_DB_PATH)
-    conn.row_factory = sqlite3.Row
-    try:
-        cur = conn.cursor()
-        cur.execute(sql, params or ())
-        if fetch and sql.strip().upper().startswith('SELECT'):
-            rows = [dict(r) for r in cur.fetchall()]
-        elif fetch and ('INSERT' in sql.upper() or 'UPDATE' in sql.upper() or 'DELETE' in sql.upper()):
-            conn.commit()
-            rows = cur.lastrowid
-        else:
-            conn.commit()
-            rows = None
-        cur.close()
-        return rows
-    finally:
-        conn.close()
 
 
 def init_portfolio_tables():
     """初始化所有组合模块需要的数据库表（MySQL + SQLite双写）"""
-    _ensure_deps()
+    _init_deps()
     import sqlite3 as _sq
     # 先在 MySQL 创建
     for table_name, mysql_sql in _MYSQL_TABLES.items():
         try:
-            _db_execute(mysql_sql, fetch=False)
+            db_execute(mysql_sql, fetch=False)
             print(f"[portfolio] MySQL table '{table_name}' OK")
         except Exception as e:
             print(f"[portfolio] MySQL table '{table_name}' failed: {e}")
@@ -478,10 +415,10 @@ def _migrate_add_user_id_column():
 
 def _init_default_settings():
     """确保 portfolio_settings 有默认行"""
-    existing = _db_execute("SELECT id FROM portfolio_settings WHERE id=1", fetch=True)
+    existing = db_execute("SELECT id FROM portfolio_settings WHERE id=1", fetch=True)
     if not existing or len(existing) == 0:
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        _db_execute(
+        db_execute(
             "INSERT INTO portfolio_settings (id, payment_enabled, free_trial_days, "
             "monthly_price, quarterly_price, annual_price, user_payment_enabled, "
             "user_free_access, trial_start_date, updated_at) "
@@ -494,7 +431,7 @@ def _init_default_settings():
 # ══════════════════════════════════════════════════════════════
 
 def get_settings():
-    rows = _db_execute("SELECT * FROM portfolio_settings WHERE id=1", fetch=True)
+    rows = db_execute("SELECT * FROM portfolio_settings WHERE id=1", fetch=True)
     if rows and len(rows) > 0:
         row = rows[0]
         return {
@@ -535,7 +472,7 @@ def update_settings(data):
         fields.append("updated_at=%s")
         values.append(now)
         values.append(1)
-        _db_execute(f"UPDATE portfolio_settings SET {', '.join(fields)} WHERE id=%s", values, fetch=False)
+        db_execute(f"UPDATE portfolio_settings SET {', '.join(fields)} WHERE id=%s", values, fetch=False)
     return get_settings()
 
 
@@ -561,7 +498,7 @@ def check_access():
 
 
 def get_payment_history():
-    rows = _db_execute(
+    rows = db_execute(
         "SELECT * FROM payment_records ORDER BY created_at DESC LIMIT 20", fetch=True)
     if not rows:
         return []
@@ -589,11 +526,11 @@ def create_subscription(plan_type):
     end_date = now + timedelta(days=days)
     start_str = now.strftime('%Y-%m-%d %H:%M:%S')
     end_str = end_date.strftime('%Y-%m-%d %H:%M:%S')
-    _db_execute(
+    db_execute(
         "INSERT INTO payment_records (plan_type, amount, payment_method, status, start_date, end_date) "
         "VALUES (%s, %s, '模拟支付', 'paid', %s, %s)",
         (plan_type, amount, start_str, end_str), fetch=False)
-    _db_execute(
+    db_execute(
         "UPDATE portfolio_settings SET user_payment_enabled=1, updated_at=%s WHERE id=1",
         (start_str,), fetch=False)
     return {
@@ -611,7 +548,7 @@ def create_subscription(plan_type):
 
 def get_risk_status(user_id):
     """获取当前有效的风险评估状态"""
-    rows = _db_execute(
+    rows = db_execute(
         "SELECT * FROM risk_assessments WHERE user_id=%s AND expiry_date > %s "
         "ORDER BY created_at DESC LIMIT 1",
         (user_id, datetime.now().strftime('%Y-%m-%d %H:%M:%S')), fetch=True)
@@ -637,7 +574,7 @@ def submit_risk_assessment(answers, user_id):
     risk_level, max_drawdown = _score_to_risk(total_score)
     now = datetime.now()
     expiry = now + timedelta(days=365)
-    _db_execute(
+    db_execute(
         "INSERT INTO risk_assessments (user_id, total_score, risk_level, max_drawdown, "
         "assessment_date, expiry_date) VALUES (%s, %s, %s, %s, %s, %s)",
         (user_id, total_score, risk_level, max_drawdown,
@@ -663,7 +600,7 @@ def override_max_drawdown(new_drawdown, accepted_risk=False, user_id=None):
     if not accepted_risk:
         return {'success': False, 'error': '请确认风险提示', 'require_confirmation': True}
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    _db_execute(
+    db_execute(
         "UPDATE risk_assessments SET manual_override=1, manual_max_drawdown=%s, "
         "risk_warning_accepted=1 WHERE user_id=%s AND expiry_date > %s",
         (new_drawdown, user_id, now), fetch=False)
@@ -678,7 +615,7 @@ def _score_to_risk(score):
 
 
 def get_risk_history(user_id):
-    rows = _db_execute(
+    rows = db_execute(
         "SELECT * FROM risk_assessments WHERE user_id=%s ORDER BY created_at DESC LIMIT 10",
         (user_id,), fetch=True)
     if not rows:
@@ -715,7 +652,7 @@ def generate_portfolio_names(risk_level='平衡型', style=None):
 # ══════════════════════════════════════════════════════════════
 
 def list_portfolios(user_id):
-    rows = _db_execute(
+    rows = db_execute(
         "SELECT * FROM portfolios WHERE is_active=1 AND user_id=%s ORDER BY updated_at DESC",
         (user_id,), fetch=True)
     if not rows:
@@ -739,7 +676,7 @@ def list_portfolios(user_id):
 
 def _compute_portfolio_summary(portfolio_id):
     """计算组合摘要指标（轻量版，仅统计数量不计算NAV）"""
-    holdings = _db_execute(
+    holdings = db_execute(
         "SELECT * FROM portfolio_holdings WHERE portfolio_id=%s", (portfolio_id,), fetch=True)
     if not holdings:
         return {'fund_count': 0, 'total_return': None, 'annual_return': None, 'max_drawdown_1y': None}
@@ -760,12 +697,12 @@ def create_portfolio(data, user_id):
     target_dd = data.get('target_max_drawdown')
     fund_codes = data.get('fund_codes', [])
     fund_weights = data.get('fund_weights', [])
-    pid = _db_execute(
+    pid = db_execute(
         "INSERT INTO portfolios (user_id, name, description, tags, risk_level, target_max_drawdown, created_from) "
         "VALUES (%s, %s, %s, %s, %s, %s, %s)",
         (user_id, name, description, tags, risk_level, target_dd, mode), fetch=True)
     if not isinstance(pid, int):
-        pid = _db_execute("SELECT LAST_INSERT_ID() as id", fetch=True)
+        pid = db_execute("SELECT LAST_INSERT_ID() as id", fetch=True)
         pid = pid[0]['id'] if pid else 1
     if fund_codes and fund_weights:
         _add_funds_to_portfolio(pid, fund_codes, fund_weights)
@@ -774,11 +711,11 @@ def create_portfolio(data, user_id):
 
 def get_portfolio(portfolio_id, user_id=None):
     if user_id:
-        rows = _db_execute(
+        rows = db_execute(
             "SELECT * FROM portfolios WHERE id=%s AND is_active=1 AND user_id=%s",
             (portfolio_id, user_id), fetch=True)
     else:
-        rows = _db_execute(
+        rows = db_execute(
             "SELECT * FROM portfolios WHERE id=%s AND is_active=1", (portfolio_id,), fetch=True)
     if not rows:
         return None
@@ -815,7 +752,7 @@ def update_portfolio(portfolio_id, data, user_id=None):
     fields.append("updated_at=%s")
     values.append(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
     values.append(portfolio_id)
-    _db_execute(f"UPDATE portfolios SET {', '.join(fields)} WHERE id=%s", values, fetch=False)
+    db_execute(f"UPDATE portfolios SET {', '.join(fields)} WHERE id=%s", values, fetch=False)
     return {'success': True}
 
 
@@ -824,10 +761,10 @@ def delete_portfolio(portfolio_id, user_id=None):
     portfolio = get_portfolio(portfolio_id, user_id)
     if portfolio is None:
         return {'success': False, 'error': '组合不存在或无权访问'}
-    _db_execute("DELETE FROM portfolio_holdings WHERE portfolio_id=%s", (portfolio_id,), fetch=False)
-    _db_execute("DELETE FROM portfolio_nav_cache WHERE portfolio_id=%s", (portfolio_id,), fetch=False)
-    _db_execute("DELETE FROM portfolio_backtest_cache WHERE portfolio_id=%s", (portfolio_id,), fetch=False)
-    _db_execute("UPDATE portfolios SET is_active=0 WHERE id=%s", (portfolio_id,), fetch=False)
+    db_execute("DELETE FROM portfolio_holdings WHERE portfolio_id=%s", (portfolio_id,), fetch=False)
+    db_execute("DELETE FROM portfolio_nav_cache WHERE portfolio_id=%s", (portfolio_id,), fetch=False)
+    db_execute("DELETE FROM portfolio_backtest_cache WHERE portfolio_id=%s", (portfolio_id,), fetch=False)
+    db_execute("UPDATE portfolios SET is_active=0 WHERE id=%s", (portfolio_id,), fetch=False)
     return {'success': True}
 
 
@@ -836,26 +773,26 @@ def duplicate_portfolio(portfolio_id, user_id=None):
     portfolio = get_portfolio(portfolio_id, user_id)
     if portfolio is None:
         return {'success': False, 'error': '组合不存在或无权访问'}
-    original = _db_execute(
+    original = db_execute(
         "SELECT * FROM portfolios WHERE id=%s", (portfolio_id,), fetch=True)
     if not original:
         return {'success': False, 'error': '组合不存在'}
     o = original[0]
     new_name = f"{o['name']}（副本）"
-    new_pid = _db_execute(
+    new_pid = db_execute(
         "INSERT INTO portfolios (user_id, name, description, tags, risk_level, target_max_drawdown, created_from) "
         "VALUES (%s, %s, %s, %s, %s, %s, 'custom')",
         (user_id, new_name, o.get('description', ''),
          o.get('tags', '[]'), o['risk_level'],
          o.get('target_max_drawdown')), fetch=True)
     if not isinstance(new_pid, int):
-        r = _db_execute("SELECT LAST_INSERT_ID() as id", fetch=True)
+        r = db_execute("SELECT LAST_INSERT_ID() as id", fetch=True)
         new_pid = r[0]['id'] if r else 1
-    holdings = _db_execute(
+    holdings = db_execute(
         "SELECT * FROM portfolio_holdings WHERE portfolio_id=%s", (portfolio_id,), fetch=True)
     if holdings:
         for h in holdings:
-            _db_execute(
+            db_execute(
                 "INSERT INTO portfolio_holdings (portfolio_id, fund_code, fund_name, fund_type, weight) "
                 "VALUES (%s, %s, %s, %s, %s)",
                 (new_pid, h['fund_code'], h.get('fund_name', ''), h.get('fund_type', ''), h['weight']),
@@ -868,7 +805,7 @@ def duplicate_portfolio(portfolio_id, user_id=None):
 # ══════════════════════════════════════════════════════════════
 
 def get_holdings(portfolio_id):
-    rows = _db_execute(
+    rows = db_execute(
         "SELECT * FROM portfolio_holdings WHERE portfolio_id=%s ORDER BY weight DESC",
         (portfolio_id,), fetch=True)
     if not rows:
@@ -887,12 +824,12 @@ def _add_funds_to_portfolio(portfolio_id, fund_codes, weights):
         fund_name = _resolve_fund_name(fc)
         fund_type_str = _guess_fund_type_by_name(fund_name)
         try:
-            _db_execute(
+            db_execute(
                 "INSERT INTO portfolio_holdings (portfolio_id, fund_code, fund_name, fund_type, weight) "
                 "VALUES (%s, %s, %s, %s, %s)",
                 (portfolio_id, fc, fund_name, fund_type_str, w), fetch=False)
         except Exception:
-            _db_execute(
+            db_execute(
                 "UPDATE portfolio_holdings SET weight=%s WHERE portfolio_id=%s AND fund_code=%s",
                 (w, portfolio_id, fc), fetch=False)
     _invalidate_nav_cache(portfolio_id)
@@ -918,16 +855,16 @@ def add_holdings(portfolio_id, fund_codes, weights=None):
 def update_holding(holding_id, weight):
     if weight <= 0 or weight > 20:
         return {'success': False, 'error': '权重需在0-20%之间'}
-    _db_execute("UPDATE portfolio_holdings SET weight=%s WHERE id=%s", (weight, holding_id), fetch=False)
-    row = _db_execute("SELECT portfolio_id FROM portfolio_holdings WHERE id=%s", (holding_id,), fetch=True)
+    db_execute("UPDATE portfolio_holdings SET weight=%s WHERE id=%s", (weight, holding_id), fetch=False)
+    row = db_execute("SELECT portfolio_id FROM portfolio_holdings WHERE id=%s", (holding_id,), fetch=True)
     if row:
         _invalidate_nav_cache(row[0]['portfolio_id'])
     return {'success': True}
 
 
 def remove_holding(holding_id):
-    row = _db_execute("SELECT portfolio_id FROM portfolio_holdings WHERE id=%s", (holding_id,), fetch=True)
-    _db_execute("DELETE FROM portfolio_holdings WHERE id=%s", (holding_id,), fetch=False)
+    row = db_execute("SELECT portfolio_id FROM portfolio_holdings WHERE id=%s", (holding_id,), fetch=True)
+    db_execute("DELETE FROM portfolio_holdings WHERE id=%s", (holding_id,), fetch=False)
     if row:
         _invalidate_nav_cache(row[0]['portfolio_id'])
     return {'success': True}
@@ -936,7 +873,7 @@ def remove_holding(holding_id):
 def _resolve_fund_name(fund_code):
     """解析基金名称 - 优先从 fund_list_cache 查找"""
     try:
-        rows = _db_execute(
+        rows = db_execute(
             "SELECT name FROM fund_list_cache WHERE code=%s LIMIT 1",
             (fund_code,), fetch=True)
         if rows and len(rows) > 0 and rows[0].get('name'):
@@ -944,7 +881,6 @@ def _resolve_fund_name(fund_code):
     except Exception:
         pass
     try:
-        _ensure_deps()
         import app
         name = app.get_fund_name(fund_code)
         if name and name != fund_code:
@@ -998,7 +934,7 @@ def _build_fund_pool(force_refresh=False):
     pool = {}
     # 1. 从 SQLite fund_list_cache 获取所有基金名称（限制5000只以提高性能）
     try:
-        rows = _db_execute("SELECT code, name FROM fund_list_cache LIMIT 5000", fetch=True)
+        rows = db_execute("SELECT code, name FROM fund_list_cache LIMIT 5000", fetch=True)
         if rows:
             for r in rows:
                 code = r.get('code', '')
@@ -1012,7 +948,7 @@ def _build_fund_pool(force_refresh=False):
         print(f"[portfolio] fund_list_cache read failed: {e}")
     # 2. 覆盖/补充 fund_basic 的指标数据
     try:
-        basic_rows = _db_execute(
+        basic_rows = db_execute(
             "SELECT fund_code, fund_name, fund_style, fund_manager, annual_return, max_drawdown, "
             "sharpe_ratio, annual_volatility FROM fund_basic", fetch=True)
         if basic_rows:
@@ -1257,7 +1193,7 @@ def _build_reason(fund, ftype):
 # ══════════════════════════════════════════════════════════════
 
 def _get_cached_portfolio_nav(portfolio_id):
-    rows = _db_execute(
+    rows = db_execute(
         "SELECT nav_date, nav_value FROM portfolio_nav_cache WHERE portfolio_id=%s "
         "ORDER BY nav_date ASC", (portfolio_id,), fetch=True)
     if not rows:
@@ -1282,14 +1218,14 @@ def _cache_portfolio_nav(portfolio_id, nav_df):
         placeholders = ', '.join(['(%s, %s, %s)'] * len(batch))
         flat_params = [v for row in batch for v in row]
         try:
-            _db_execute(
+            db_execute(
                 f"INSERT IGNORE INTO portfolio_nav_cache (portfolio_id, nav_date, nav_value) "
                 f"VALUES {placeholders}",
                 tuple(flat_params), fetch=False)
         except Exception:
             try:
                 q_placeholders = ', '.join(['(?, ?, ?)'] * len(batch))
-                _db_execute(
+                db_execute(
                     f"INSERT OR IGNORE INTO portfolio_nav_cache (portfolio_id, nav_date, nav_value) "
                     f"VALUES {q_placeholders}",
                     tuple(flat_params), fetch=False)
@@ -1299,11 +1235,11 @@ def _cache_portfolio_nav(portfolio_id, nav_df):
 
 def _invalidate_nav_cache(portfolio_id):
     try:
-        _db_execute("DELETE FROM portfolio_nav_cache WHERE portfolio_id=%s", (portfolio_id,), fetch=False)
+        db_execute("DELETE FROM portfolio_nav_cache WHERE portfolio_id=%s", (portfolio_id,), fetch=False)
     except Exception:
         pass
     try:
-        _db_execute("DELETE FROM portfolio_backtest_cache WHERE portfolio_id=%s", (portfolio_id,), fetch=False)
+        db_execute("DELETE FROM portfolio_backtest_cache WHERE portfolio_id=%s", (portfolio_id,), fetch=False)
     except Exception:
         pass
 
@@ -1468,7 +1404,7 @@ def _build_holdings_analysis(holdings):
         fund_name = h.get('fund_name', fc)
         # 1. 尝试从Redis/内存缓存获取fund info
         try:
-            _ensure_deps()
+            _init_deps()
             ck = _generate_cache_key('fund:info', fc)
             info = _get_cache(ck)
             if info:
@@ -1480,7 +1416,7 @@ def _build_holdings_analysis(holdings):
         # 2. 尝试从SQLite fund_basic获取
         if not day_growth:
             try:
-                rows = _db_execute(
+                rows = db_execute(
                     "SELECT day_growth FROM fund_basic WHERE fund_code=%s LIMIT 1",
                     (fc,), fetch=True)
                 if rows and len(rows) > 0:
@@ -1518,7 +1454,6 @@ def _build_holdings_analysis(holdings):
 
 def search_funds_for_portfolio(keyword):
     """增强搜索：按代码/名称返回基金列表，附带简单指标"""
-    _ensure_deps()
     if not keyword or len(keyword) < 1:
         return []
     try:
@@ -1547,7 +1482,7 @@ def search_funds_for_portfolio(keyword):
         pass
     # 从 SQLite fund_list_cache 搜索
     try:
-        rows = _db_execute(
+        rows = db_execute(
             "SELECT code, name FROM fund_list_cache WHERE code LIKE %s OR name LIKE %s LIMIT 15",
             (f'%{keyword}%', f'%{keyword}%'), fetch=True)
         if rows:
@@ -1591,7 +1526,7 @@ def search_funds_for_portfolio(keyword):
 
 def get_suggested_funds(risk_type=None):
     """获取系统建议基金（按风险类型分类），从全市场基金池筛选"""
-    _ensure_deps()
+    _init_deps()
     cache_key = _generate_cache_key('portfolio', 'suggested_funds_v2')
     cached = _get_cache(cache_key)
     if cached:
@@ -1924,14 +1859,14 @@ def run_backtest(portfolio_id, start_date, end_date):
     }
     # 缓存
     try:
-        _db_execute(
+        db_execute(
             "INSERT INTO portfolio_backtest_cache (portfolio_id, start_date, end_date, backtest_data) "
             "VALUES (%s, %s, %s, %s) ON DUPLICATE KEY UPDATE backtest_data=%s",
             (portfolio_id, start_date, end_date, json.dumps(result, ensure_ascii=False),
              json.dumps(result, ensure_ascii=False)), fetch=False)
     except Exception:
         try:
-            _db_execute(
+            db_execute(
                 "INSERT OR REPLACE INTO portfolio_backtest_cache (portfolio_id, start_date, end_date, backtest_data) "
                 "VALUES (?, ?, ?, ?)",
                 (portfolio_id, start_date, end_date, json.dumps(result, ensure_ascii=False)), fetch=False)
