@@ -17,6 +17,7 @@ class _PooledConn:
     def __init__(self, conn, pool_queue):
         self._conn = conn
         self._pool_queue = pool_queue
+        self._invalid = False
 
     def cursor(self):
         return self._conn.cursor()
@@ -30,14 +31,21 @@ class _PooledConn:
         except Exception:
             pass
 
+    def invalidate(self):
+        """标记此连接为无效，close() 时将真正关闭而不是归还到池"""
+        self._invalid = True
+
     def close(self):
-        """归还连接到池"""
-        if self._pool_queue is not None:
+        """归还连接到池（如果有效），否则真正关闭"""
+        if self._invalid or self._pool_queue is None:
             try:
-                self._pool_queue.put_nowait(self._conn)
-            except queue.Full:
                 self._conn.close()
-        else:
+            except Exception:
+                pass
+            return
+        try:
+            self._pool_queue.put_nowait(self._conn)
+        except queue.Full:
             self._conn.close()
 
     def __enter__(self):
@@ -95,6 +103,7 @@ class DatabasePool:
             print(f"[db] MySQL error: {e}, falling back to SQLite")
             if conn:
                 try:
+                    conn.invalidate()
                     conn.rollback()
                     conn.close()
                 except Exception:
@@ -109,6 +118,7 @@ class DatabasePool:
             ("idx_hold_fund_code", "portfolio_holdings", "fund_code"),
         ]
         conn = None
+        had_error = False
         try:
             conn = self.get_connection()
             cur = conn.cursor()
@@ -123,10 +133,13 @@ class DatabasePool:
                     pass  # 索引已存在
             cur.close()
         except Exception as e:
+            had_error = True
             print(f"[db] Index creation skipped: {e}")
         finally:
             if conn:
                 try:
+                    if had_error:
+                        conn.invalidate()
                     conn.close()
                 except Exception:
                     pass
