@@ -105,10 +105,15 @@ class DatabasePool:
                 try:
                     conn.invalidate()
                     conn.rollback()
-                    conn.close()
                 except Exception:
                     pass
             return _sqlite_execute(sql, params, fetch)
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
     def ensure_indexes(self):
         """启动时自动创建缺失索引（幂等）"""
