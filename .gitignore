@@ -10,3 +10,4 @@ test-results/
 *.log
 .claude/
 fund_data/
+.gstack/
