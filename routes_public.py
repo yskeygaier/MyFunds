@@ -156,3 +156,58 @@ def guide_screen():
         })
 
     return jsonify({'success': True, 'total': total, 'top': top3})
+
+
+@public_bp.route('/api/guide/build-portfolio')
+def build_portfolio():
+    """教练向导步骤 2：根据选中基金构建组合"""
+    from db import db_execute
+    import math
+
+    codes_str = request.args.get('codes', '')
+    codes = [c.strip() for c in codes_str.split(',') if c.strip()] if codes_str else []
+    if not codes or len(codes) < 2:
+        return jsonify({'success': False, 'error': '请至少选择 2 只基金'})
+    if len(codes) > 5:
+        return jsonify({'success': False, 'error': '最多选择 5 只基金'})
+
+    rows = db_execute(
+        "SELECT fund_code, fund_name, total_score, p1_performance, p2_philosophy, "
+        "p3_people, p4_process, annual_return, max_drawdown, sharpe_ratio "
+        "FROM fund_scores WHERE fund_code IN ("
+        + ','.join(['%s'] * len(codes)) + ")",
+        tuple(codes), fetch=True)
+
+    if not rows or len(rows) < len(codes):
+        return jsonify({'success': False, 'error': '部分基金评分数据缺失'})
+
+    total_weight = sum(max(r['total_score'], 1) for r in rows)
+
+    funds = []
+    for r in rows:
+        weight = round(max(r['total_score'], 1) / total_weight * 100, 1)
+        funds.append({
+            'fund_code': r['fund_code'],
+            'fund_name': r['fund_name'],
+            'weight': weight,
+            'score': r['total_score'],
+            'annual_return': float(r['annual_return']),
+            'max_drawdown': float(r['max_drawdown']),
+            'sharpe_ratio': float(r['sharpe_ratio']),
+            'p1': r['p1_performance'], 'p2': r['p2_philosophy'],
+            'p3': r['p3_people'], 'p4': r['p4_process'],
+        })
+
+    portfolio_return = sum(f['annual_return'] * f['weight'] / 100 for f in funds)
+    portfolio_dd = sum(f['max_drawdown'] * f['weight'] / 100 for f in funds)
+    portfolio_sharpe = sum(f['sharpe_ratio'] * f['weight'] / 100 for f in funds)
+
+    return jsonify({
+        'success': True,
+        'funds': funds,
+        'metrics': {
+            'annual_return': round(portfolio_return, 1),
+            'max_drawdown': round(portfolio_dd, 1),
+            'sharpe_ratio': round(portfolio_sharpe, 2),
+        },
+    })

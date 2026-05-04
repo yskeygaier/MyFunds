@@ -53,6 +53,15 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;heigh
 .reset-btn:hover{color:#F8FAFC;border-color:rgba(148,163,184,0.4)}
 
 .next-step{font-size:12px;color:#64748B;text-align:center;padding:16px;border-top:1px solid rgba(148,163,184,0.08);margin-top:20px}
+
+/* step 2 */
+.checkbox-row{display:flex;align-items:center;gap:8px;padding:8px 0}
+.checkbox-row input[type=checkbox]{width:18px;height:18px;accent-color:#F59E0B}
+.export-area{background:rgba(15,23,42,0.8);border:1px solid rgba(148,163,184,0.15);border-radius:8px;padding:16px;margin-top:12px;font-family:monospace;font-size:13px;line-height:1.8}
+.copy-btn{display:inline-block;background:#F59E0B;color:#0F172A;border:none;border-radius:6px;padding:8px 20px;font-weight:600;font-size:14px;cursor:pointer;font-family:inherit;margin-top:8px}
+.copy-btn:hover{background:#FBBF24}
+.step2-section{display:none}
+.step2-section.active{display:block}
 </style>
 </head>
 <body>
@@ -95,8 +104,17 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;heigh
         <div class="loading-state"><div class="spinner"></div><p style="margin-top:12px;">筛选基金中...</p></div>
     </div>
 
-    <div class="next-step">
-        下一步：查看组合详情，了解每只基金的 4P 评分细节 →
+    <div class="next-step" id="nextStepHint">
+        勾选下方基金，然后点击"构建组合"进入步骤 2 →
+    </div>
+
+    <!-- 步骤 2：构建组合 -->
+    <div class="card step2-section" id="step2Section">
+        <span class="step-badge">步骤 2/2</span>
+        <h2>你的定制组合</h2>
+        <p style="font-size:13px;color:#94A3B8;margin-bottom:16px;">系统根据评分自动分配配比。复制后在天天基金或支付宝买入。</p>
+
+        <div id="portfolioResult"></div>
     </div>
 </div>
 
@@ -152,8 +170,12 @@ function fetchResults() {
                 '</div></div>';
             d.top.forEach(function(f) {
                 html += '<div class="fund-card">' +
-                    '<div class="fund-header">' +
-                        '<div><div class="fund-name">' + esc(f.fund_name) + '</div><div class="fund-code">' + esc(f.fund_code) + '</div></div>' +
+                    '<div class="checkbox-row">' +
+                        '<input type="checkbox" class="fund-check" value="' + f.fund_code + '" onchange="onCheckChange()">' +
+                        '<div style="flex:1">' +
+                            '<div class="fund-name">' + esc(f.fund_name) + '</div>' +
+                            '<div class="fund-code">' + esc(f.fund_code) + '</div>' +
+                        '</div>' +
                         '<div class="fund-score">' + f.total_score + '分</div>' +
                     '</div>' +
                     '<div class="score-row">' +
@@ -169,7 +191,9 @@ function fetchResults() {
                     '</div>' +
                 '</div>';
             });
+            html += '<button class="btn" id="buildBtn" onclick="buildPortfolio()" disabled style="width:100%;margin-top:8px;background:#F59E0B;color:#0F172A;border:none;padding:12px;border-radius:8px;font-weight:600;font-size:15px;cursor:pointer;font-family:inherit;">选择基金后构建组合</button>';
             container.innerHTML = html;
+            document.getElementById('step2Section').classList.remove('active');
         })
         .catch(function() {
             document.getElementById('results').innerHTML =
@@ -190,6 +214,89 @@ ddSlider.addEventListener('input', function() {
     clearTimeout(timer);
     timer = setTimeout(fetchResults, 400);
 });
+
+function onCheckChange() {
+    var checked = document.querySelectorAll('.fund-check:checked');
+    var btn = document.getElementById('buildBtn');
+    var hint = document.getElementById('nextStepHint');
+    if (checked.length >= 2) {
+        btn.disabled = false;
+        btn.textContent = '构建组合 (' + checked.length + ' 只基金)';
+        hint.textContent = '已选 ' + checked.length + ' 只，点击"构建组合"进入步骤 2 →';
+    } else {
+        btn.disabled = true;
+        btn.textContent = '至少选择 2 只基金';
+        hint.textContent = '勾选下方基金，然后点击"构建组合"进入步骤 2 →';
+    }
+}
+
+function buildPortfolio() {
+    var checked = document.querySelectorAll('.fund-check:checked');
+    var codes = [];
+    checked.forEach(function(cb) { codes.push(cb.value); });
+    var sec = document.getElementById('step2Section');
+    var result = document.getElementById('portfolioResult');
+    result.innerHTML = '<div class="loading-state"><div class="spinner"></div><p style="margin-top:12px;">构建组合中...</p></div>';
+    sec.classList.add('active');
+    sec.scrollIntoView({behavior:'smooth'});
+
+    fetch('/api/guide/build-portfolio?codes=' + codes.join(','))
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (!d.success) {
+                result.innerHTML = '<div class="empty-state"><p>' + esc(d.error) + '</p></div>';
+                return;
+            }
+            var html = '';
+            d.funds.forEach(function(f) {
+                html += '<div class="fund-card">' +
+                    '<div class="fund-header">' +
+                        '<div><div class="fund-name">' + esc(f.fund_name) + ' (' + esc(f.fund_code) + ')</div></div>' +
+                        '<div class="fund-score">' + f.weight + '%</div>' +
+                    '</div>' +
+                    '<div class="fund-metrics">' +
+                        '<div class="m"><div class="mv">' + f.score + '</div><div style="font-size:11px;color:#94A3B8">评分</div></div>' +
+                        '<div class="m"><div class="mv ' + (f.annual_return >= 0 ? 'positive' : 'negative') + '">' + (f.annual_return >= 0 ? '+' : '') + f.annual_return.toFixed(1) + '%</div><div style="font-size:11px;color:#94A3B8">年化</div></div>' +
+                        '<div class="m"><div class="mv" style="color:#10B981">' + f.max_drawdown.toFixed(1) + '%</div><div style="font-size:11px;color:#94A3B8">回撤</div></div>' +
+                    '</div>' +
+                '</div>';
+            });
+            var m = d.metrics;
+            html += '<div style="padding:12px;background:rgba(245,158,11,0.08);border-radius:8px;margin-top:12px;">' +
+                '<div style="display:flex;gap:20px;font-size:14px;">' +
+                    '<div><span style="color:#94A3B8;">组合年化: </span><span class="mv ' + (m.annual_return >= 0 ? 'positive' : 'negative') + '">' + (m.annual_return >= 0 ? '+' : '') + m.annual_return.toFixed(1) + '%</span></div>' +
+                    '<div><span style="color:#94A3B8;">组合回撤: </span><span class="mv" style="color:#10B981">' + m.max_drawdown.toFixed(1) + '%</span></div>' +
+                    '<div><span style="color:#94A3B8;">夏普: </span><span class="mv">' + m.sharpe_ratio.toFixed(2) + '</span></div>' +
+                '</div></div>';
+
+            // Export format
+            var exportText = '【基金投资教练 · 我的组合】\n\n';
+            d.funds.forEach(function(f) {
+                exportText += f.fund_code + ' ' + f.fund_name + ' — ' + f.weight + '%\n';
+            });
+            exportText += '\n预期年化: ' + (m.annual_return >= 0 ? '+' : '') + m.annual_return.toFixed(1) + '% | 预期回撤: ' + m.max_drawdown.toFixed(1) + '% | 夏普: ' + m.sharpe_ratio.toFixed(2) + '\n';
+            exportText += '\n在天天基金或支付宝搜索基金代码即可买入。\n组合由 4P 三性方法论生成。';
+
+            html += '<div class="export-area" id="exportText">' + exportText.replace(/\n/g, '<br>') + '</div>' +
+                '<button class="copy-btn" onclick="copyExport()">复制到剪贴板</button>' +
+                '<span style="font-size:12px;color:#64748B;margin-left:8px;" id="copyMsg"></span>';
+            result.innerHTML = html;
+            window._exportRaw = exportText;
+        })
+        .catch(function() {
+            result.innerHTML = '<div class="error-state"><p>构建失败</p><button onclick="buildPortfolio()">重试</button></div>';
+        });
+}
+
+function copyExport() {
+    if (window._exportRaw) {
+        navigator.clipboard.writeText(window._exportRaw).then(function() {
+            document.getElementById('copyMsg').textContent = '已复制！去天天基金粘贴';
+        }).catch(function() {
+            document.getElementById('copyMsg').textContent = '复制失败，请手动选中文字';
+        });
+    }
+}
 
 fetchResults();
 </script>
