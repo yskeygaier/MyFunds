@@ -193,6 +193,53 @@ def _rule_based_onboard(text: str):
     return {'min_return': min_ret, 'max_drawdown': max_dd, 'reason': reason}
 
 
+@public_bp.route('/api/guide/compare')
+def guide_compare():
+    """基金对比：并排展示 2-3 只基金的 4P 评分和关键指标"""
+    from db import db_execute
+
+    codes_str = request.args.get('codes', '')
+    codes = [c.strip() for c in codes_str.split(',') if c.strip()] if codes_str else []
+    if len(codes) < 2 or len(codes) > 3:
+        return jsonify({'success': False, 'error': '请选择 2-3 只基金进行对比'})
+
+    rows = db_execute(
+        "SELECT fund_code, fund_name, p1_performance, p2_philosophy, p3_people, p4_process, "
+        "total_score, annual_return, max_drawdown, sharpe_ratio "
+        "FROM fund_scores WHERE fund_code IN (" + ','.join(['%s'] * len(codes)) + ")",
+        tuple(codes), fetch=True)
+
+    if len(rows) < 2:
+        return jsonify({'success': False, 'error': '部分基金评分数据缺失'})
+
+    funds = []
+    for r in rows:
+        funds.append({
+            'fund_code': r['fund_code'],
+            'fund_name': r['fund_name'],
+            'total_score': r['total_score'],
+            'p1': r['p1_performance'], 'p2': r['p2_philosophy'],
+            'p3': r['p3_people'], 'p4': r['p4_process'],
+            'annual_return': float(r['annual_return']),
+            'max_drawdown': float(r['max_drawdown']),
+            'sharpe_ratio': float(r['sharpe_ratio']),
+        })
+
+    # 按总分排序，最高的在左边
+    funds.sort(key=lambda x: x['total_score'], reverse=True)
+
+    # 找出每列的最高值用于高亮
+    highlights = {}
+    for key in ['total_score', 'p1', 'p2', 'p3', 'p4', 'annual_return', 'sharpe_ratio']:
+        best_val = max(f[key] for f in funds)
+        highlights[key] = best_val
+    # max_drawdown 越低越好
+    best_dd = min(f['max_drawdown'] for f in funds)
+    highlights['max_drawdown'] = best_dd
+
+    return jsonify({'success': True, 'funds': funds, 'highlights': highlights})
+
+
 @public_bp.route('/api/guide/screen')
 def guide_screen():
     """教练向导 API：按收益/回撤筛选基金"""
