@@ -1226,6 +1226,28 @@
             .holding-row { flex-direction: column; align-items: stretch; }
             .holding-row .weight-control { justify-content: space-between; }
         }
+
+        /* hero entry cards */
+        .hero-cards {
+            display: flex; gap: 12px; max-width: 720px; margin: 0 auto 16px;
+            padding: 0 16px;
+        }
+        .hero-card {
+            flex: 1; display: flex; flex-direction: column; align-items: center;
+            gap: 6px; padding: 20px 16px; border-radius: 12px;
+            background: rgba(30,41,59,0.8); border: 1px solid rgba(148,163,184,0.12);
+            text-decoration: none; transition: border-color 0.2s, background 0.2s;
+            text-align: center;
+        }
+        .hero-card:hover { border-color: rgba(245,158,11,0.3); background: rgba(30,41,59,0.95); }
+        .hero-card-primary { border-color: rgba(245,158,11,0.2); background: rgba(245,158,11,0.05); }
+        .hero-card-icon { font-size: 28px; }
+        .hero-card-title { font-size: 15px; font-weight: 600; color: #F8FAFC; }
+        .hero-card-desc { font-size: 12px; color: #94A3B8; }
+
+        @media (max-width: 520px) {
+            .hero-cards { flex-direction: column; }
+        }
     </style>
 </head>
 <body>
@@ -1255,6 +1277,19 @@
             </button>
         </div>
         <div class="suggestions" id="suggestions" role="listbox" aria-label="搜索建议"></div>
+    </div>
+
+    <div class="hero-cards">
+        <a href="/guide" class="hero-card hero-card-primary">
+            <span class="hero-card-icon">🎯</span>
+            <span class="hero-card-title">我是新手，帮我选基金</span>
+            <span class="hero-card-desc">4P 三性教练向导 · 3 分钟找到适合你的组合</span>
+        </a>
+        <a href="/public/portfolio" class="hero-card">
+            <span class="hero-card-icon">📊</span>
+            <span class="hero-card-title">查看实盘组合</span>
+            <span class="hero-card-desc">创始人真实持仓 · 每日更新</span>
+        </a>
     </div>
 
     <nav class="tabs" role="tablist" aria-label="功能标签页">
