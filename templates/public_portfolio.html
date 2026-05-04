@@ -56,7 +56,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
     {% if error %}
     <div class="error">
         <p>{{ error }}</p>
-        <p style="font-size:13px;">组合数据正在准备中，预计 24 小时内就绪</p>
+        {% if error_detail == 'portfolio_not_found' %}
+        <p style="font-size:13px;">创始人正在构建实盘组合，预计近期上线</p>
+        {% else %}
+        <p style="font-size:13px;">系统维护中，自动恢复中，请稍后再来</p>
+        {% endif %}
         <a href="/guide" style="color:#F59E0B;font-size:13px;">先去教练向导看看 →</a>
     </div>
     {% else %}

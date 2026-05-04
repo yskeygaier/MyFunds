@@ -105,6 +105,12 @@ var timer = null;
 var retSlider = document.getElementById('retSlider');
 var ddSlider = document.getElementById('ddSlider');
 
+function esc(s) {
+    var d = document.createElement('div');
+    d.textContent = (s != null ? String(s) : '');
+    return d.innerHTML;
+}
+
 function updateLabels() {
     document.getElementById('retVal').textContent = retSlider.value + '%';
     document.getElementById('ddVal').textContent = ddSlider.value + '%';
@@ -147,7 +153,7 @@ function fetchResults() {
             d.top.forEach(function(f) {
                 html += '<div class="fund-card">' +
                     '<div class="fund-header">' +
-                        '<div><div class="fund-name">' + f.fund_name + '</div><div class="fund-code">' + f.fund_code + '</div></div>' +
+                        '<div><div class="fund-name">' + esc(f.fund_name) + '</div><div class="fund-code">' + esc(f.fund_code) + '</div></div>' +
                         '<div class="fund-score">' + f.total_score + '分</div>' +
                     '</div>' +
                     '<div class="score-row">' +

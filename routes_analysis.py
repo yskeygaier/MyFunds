@@ -868,9 +868,9 @@ def _precompute_top_funds_async():
                         (code, name, p1, p2, p3, p4, total, an, dd if dd > 0 else 0, sr),
                         fetch=False)
                     count += 1
-                except Exception:
-                    pass
-            print(f"[scores] Precomputed {count} fund scores")
+                except Exception as e:
+                    print(f"[scores] Skip {code}: {e}")
+            print(f"[scores] Precomputed {count}/{len(rows)} fund scores")
         except Exception as e:
             print(f"[scores] Precompute failed: {e}")
 
