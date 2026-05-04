@@ -435,12 +435,87 @@ function buildPortfolio() {
 
             html += '<div class="export-area" id="exportText">' + exportText.replace(/\n/g, '<br>') + '</div>' +
                 '<button class="copy-btn" onclick="copyExport()">复制到剪贴板</button>' +
-                '<span style="font-size:12px;color:#64748B;margin-left:8px;" id="copyMsg"></span>';
+                '<span style="font-size:12px;color:#64748B;margin-left:8px;" id="copyMsg"></span>' +
+                '<div style="margin-top:12px;">' +
+                    '<button onclick="loadPortfolioChart()" id="chartLoadBtn" style="background:rgba(148,163,184,0.1);color:#F8FAFC;border:1px solid rgba(148,163,184,0.2);border-radius:6px;padding:8px 16px;font-size:13px;cursor:pointer;font-family:inherit;">📈 查看历史走势</button>' +
+                '</div>' +
+                '<div id="portfolioChart" style="margin-top:12px;height:260px;display:none;"></div>';
             result.innerHTML = html;
             window._exportRaw = exportText;
         })
         .catch(function() {
             result.innerHTML = '<div class="error-state"><p>构建失败</p><button onclick="buildPortfolio()">重试</button></div>';
+        });
+}
+
+function loadPortfolioChart() {
+    var checked = document.querySelectorAll('.fund-check:checked');
+    var codes = [], weights = [];
+    checked.forEach(function(cb) {
+        codes.push(cb.value);
+        // weight is stored in the step 2 result, or use equal weight
+        var w = 100 / checked.length;
+        weights.push(w.toFixed(0));
+    });
+    if (codes.length < 2) return;
+
+    var container = document.getElementById('portfolioChart');
+    container.style.display = '';
+    container.innerHTML = '<div class="loading-state"><div class="spinner"></div><p style="margin-top:8px;font-size:13px;">计算历史走势...</p></div>';
+    var btn = document.getElementById('chartLoadBtn');
+    btn.disabled = true;
+    btn.textContent = '计算中...';
+
+    fetch('/api/guide/backtest-portfolio?codes=' + codes.join(',') + '&weights=' + weights.join(','))
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            btn.style.display = 'none';
+            if (!d.success) {
+                container.innerHTML = '<p style="color:#64748B;font-size:13px;text-align:center;">' + esc(d.error) + '</p>';
+                return;
+            }
+
+            // Lazy-load Plotly if needed
+            function render() {
+                var trace = {
+                    x: d.dates, y: d.navs,
+                    type: 'scatter', mode: 'lines',
+                    name: '组合净值',
+                    fill: 'tozeroy',
+                    fillcolor: 'rgba(245,158,11,0.1)',
+                    line: {color: '#F59E0B', width: 2, shape: 'spline', smoothing: 0.3},
+                    hovertemplate: '%{x}<br>净值: %{y:.4f}<extra></extra>'
+                };
+                var pc = d.total_return >= 0 ? '#EF4444' : '#10B981';
+                var layout = {
+                    paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
+                    xaxis: {color: '#94A3B8', gridcolor: 'rgba(148,163,184,0.08)'},
+                    yaxis: {color: '#94A3B8', gridcolor: 'rgba(148,163,184,0.08)'},
+                    margin: {l:40, r:20, t:40, b:40},
+                    font: {color: '#94A3B8', size: 10},
+                    showlegend: false, height: 260,
+                    annotations: [{
+                        text: '总收益: ' + (d.total_return >= 0 ? '+' : '') + d.total_return.toFixed(2) + '% | 最大回撤: ' + d.max_drawdown.toFixed(1) + '% (' + d.max_dd_date + ')',
+                        x: 0.02, y: 0.98, xref: 'paper', yref: 'paper', showarrow: false,
+                        font: {size: 12, color: pc},
+                        bgcolor: 'rgba(15,23,42,0.8)', borderpad: 4
+                    }]
+                };
+                Plotly.newPlot('portfolioChart', [trace], layout, {responsive: true});
+            }
+
+            if (typeof Plotly !== 'undefined') { render(); }
+            else {
+                var s = document.createElement('script');
+                s.src = 'https://cdn.plot.ly/plotly-2.24.1.min.js';
+                s.onload = render;
+                document.head.appendChild(s);
+            }
+        })
+        .catch(function() {
+            container.innerHTML = '<p style="color:#64748B;font-size:13px;text-align:center;">加载失败</p>';
+            btn.disabled = false;
+            btn.textContent = '📈 查看历史走势';
         });
 }
 

@@ -240,6 +240,111 @@ def guide_compare():
     return jsonify({'success': True, 'funds': funds, 'highlights': highlights})
 
 
+@public_bp.route('/api/guide/backtest-portfolio')
+def backtest_portfolio():
+    """组合回测：根据基金代码和权重计算组合历史净值"""
+    codes_str = request.args.get('codes', '')
+    weights_str = request.args.get('weights', '')
+    codes = [c.strip() for c in codes_str.split(',') if c.strip()] if codes_str else []
+    weights_raw = [w.strip() for w in weights_str.split(',') if w.strip()] if weights_str else []
+
+    if len(codes) < 2 or len(codes) != len(weights_raw):
+        return jsonify({'success': False, 'error': '参数错误'})
+
+    try:
+        weights = [float(w) / 100 for w in weights_raw]
+    except ValueError:
+        return jsonify({'success': False, 'error': '权重格式错误'})
+
+    from fund_crawler import crawl_fund_nav_df
+    import pandas as pd
+    import concurrent.futures
+
+    fund_navs = {}
+
+    def _fetch_one(code):
+        try:
+            data = crawl_fund_nav_df(code, years=1)
+            if data:
+                df = pd.DataFrame(data)
+                df['date'] = pd.to_datetime(df['净值日期'])
+                df['nav'] = pd.to_numeric(df['单位净值'], errors='coerce')
+                df = df.dropna(subset=['nav'])
+                df = df.set_index('date').sort_index()
+                return code, df['nav']
+        except Exception:
+            pass
+        return code, None
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(codes), 5)) as executor:
+        futures = {executor.submit(_fetch_one, c): c for c in codes}
+        for future in concurrent.futures.as_completed(futures):
+            try:
+                fc, nav = future.result(timeout=15)
+                if nav is not None and len(nav) > 5:
+                    fund_navs[fc] = nav
+            except Exception:
+                pass
+
+    if len(fund_navs) < 2:
+        return jsonify({'success': False, 'error': '无法获取足够的净值数据'})
+
+    # Align dates and compute weighted portfolio NAV
+    all_dates = sorted(set().union(*[set(s.index) for s in fund_navs.values()]))
+    portfolio_nav = []
+    base_date = all_dates[0]
+    for d in all_dates:
+        weighted = 0
+        total_w = 0
+        for code, w in zip(codes, weights):
+            if code in fund_navs:
+                s = fund_navs[code]
+                if d in s.index:
+                    nav_val = s.loc[d]
+                else:
+                    nearby = s.index[s.index <= d]
+                    if len(nearby) == 0:
+                        continue
+                    nav_val = s.loc[nearby[-1]]
+                base_val = s.loc[s.index[0]]
+                if base_val > 0:
+                    weighted += w * (nav_val / base_val)
+                    total_w += w
+        if total_w > 0:
+            portfolio_nav.append({
+                'date': d.strftime('%Y-%m-%d'),
+                'nav': round(weighted / total_w, 4),
+            })
+
+    if len(portfolio_nav) < 10:
+        return jsonify({'success': False, 'error': '组合净值数据不足'})
+
+    # Calculate metrics
+    navs = [p['nav'] for p in portfolio_nav]
+    total_return = round((navs[-1] / navs[0] - 1) * 100, 2)
+    peak = navs[0]
+    max_dd = 0
+    max_dd_date = ''
+    for i, v in enumerate(navs):
+        if v > peak:
+            peak = v
+        dd = (peak - v) / peak * 100
+        if dd > max_dd:
+            max_dd = dd
+            max_dd_date = portfolio_nav[i]['date']
+    max_dd = round(max_dd, 2)
+
+    return jsonify({
+        'success': True,
+        'dates': [p['date'] for p in portfolio_nav],
+        'navs': navs,
+        'total_return': total_return,
+        'max_drawdown': max_dd,
+        'max_dd_date': max_dd_date,
+        'data_points': len(portfolio_nav),
+    })
+
+
 @public_bp.route('/api/guide/screen')
 def guide_screen():
     """教练向导 API：按收益/回撤筛选基金"""
