@@ -3,8 +3,15 @@
 from flask import Blueprint, render_template, request, jsonify, send_from_directory
 from datetime import datetime
 from routes_analysis import _score_performance, _score_philosophy, _score_people, _score_process
+import json
+import os
+import re
 
 public_bp = Blueprint('public', __name__)
+
+# LLM 配置（Anthropic API）
+ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '')
+ANTHROPIC_MODEL = os.environ.get('ANTHROPIC_MODEL', 'claude-haiku-4-5-20251001')
 
 
 @public_bp.route('/sitemap.xml')
@@ -81,6 +88,109 @@ def founder_portfolio():
                            chart_dates=chart_dates,
                            chart_navs=chart_navs,
                            updated_at=datetime.now().strftime('%Y-%m-%d'))
+
+
+@public_bp.route('/api/guide/onboard', methods=['POST'])
+def guide_onboard():
+    """自然语言 onboarding：用户描述自身情况，LLM 提取投资参数"""
+    data = request.get_json() or {}
+    user_input = (data.get('input', '') or '').strip()
+    if not user_input or len(user_input) < 6:
+        return jsonify({'success': False, 'error': '请描述你的情况（至少 6 个字）'})
+    if len(user_input) > 500:
+        return jsonify({'success': False, 'error': '描述太长了，控制在 500 字以内'})
+
+    if not ANTHROPIC_API_KEY:
+        # 降级：使用规则引擎
+        params = _rule_based_onboard(user_input)
+        return jsonify({'success': True, 'source': 'rules', **params})
+
+    try:
+        import urllib.request as _ur
+        prompt = f"""你是一个基金投资顾问。用户描述了他们的个人情况，请提取关键投资参数。
+
+用户输入："{user_input}"
+
+请返回 JSON（只返回 JSON，不要其他文字）：
+{{
+  "min_return": 数字(1-20，默认8),
+  "max_drawdown": 数字(5-40，默认20),
+  "reason": "一句话解释为什么推荐这个范围（中文，30字以内）"
+}}
+
+规则：
+- 年轻、收入高、能承受波动 → 收益偏高(10-15)、回撤放宽(20-30)
+- 中年、求稳、有家庭负担 → 收益适中(6-10)、回撤适中(15-20)
+- 退休/临近退休、保本为主 → 收益保守(3-6)、回撤保守(5-15)
+- 提到具体数字则以用户说的为准"""
+
+        req = _ur.Request(
+            'https://api.anthropic.com/v1/messages',
+            data=json.dumps({
+                'model': ANTHROPIC_MODEL,
+                'max_tokens': 200,
+                'messages': [{'role': 'user', 'content': prompt}],
+            }).encode(),
+            headers={
+                'x-api-key': ANTHROPIC_API_KEY,
+                'anthropic-version': '2023-06-01',
+                'content-type': 'application/json',
+            })
+        resp = _ur.urlopen(req, timeout=10)
+        body = json.loads(resp.read().decode())
+        text = body['content'][0]['text'].strip()
+
+        # 提取 JSON
+        import re
+        m = re.search(r'\{[^}]+\}', text)
+        if m:
+            result = json.loads(m.group())
+            min_ret = max(1, min(20, int(result.get('min_return', 8))))
+            max_dd = max(5, min(40, int(result.get('max_drawdown', 20))))
+            reason = result.get('reason', '根据你的情况推荐')
+            return jsonify({'success': True, 'source': 'llm',
+                          'min_return': min_ret, 'max_drawdown': max_dd,
+                          'reason': str(reason)[:60]})
+    except Exception as e:
+        print(f"[onboard] LLM failed: {e}")
+
+    # LLM 失败，降级到规则引擎
+    params = _rule_based_onboard(user_input)
+    return jsonify({'success': True, 'source': 'rules_fallback', **params})
+
+
+def _rule_based_onboard(text: str):
+    """简易规则引擎：从用户描述中提取投资偏好（LLM 不可用时的降级方案）"""
+    text_low = text.lower()
+    age = 35
+    import re
+    age_m = re.search(r'(\d{2})\s*岁', text)
+    if age_m:
+        age = int(age_m.group(1))
+
+    if any(w in text_low for w in ['退休', '养老', '保本', '不亏', '安全']):
+        min_ret, max_dd, reason = 4, 12, '倾向保守：以保本和稳定增值为目标'
+    elif age > 50:
+        min_ret, max_dd, reason = 5, 18, '临近退休：适度收益，控制风险为主'
+    elif age > 35:
+        min_ret, max_dd, reason = 8, 22, '中年稳健：平衡收益与风险'
+    elif any(w in text_low for w in ['激进', '高收益', '翻倍', '承受']):
+        min_ret, max_dd, reason = 14, 30, '积极进取：愿意承受较大波动追求高收益'
+    else:
+        min_ret, max_dd, reason = 8, 22, '默认推荐：适合大多数投资者'
+
+    # 用户明确提到的数字优先
+    num_m = re.findall(r'(\d+)\s*%', text)
+    if num_m:
+        nums = [int(n) for n in num_m]
+        if any(w in text_low for w in ['亏', '回撤', '跌', '损失', '承受']):
+            max_dd = max(5, min(40, nums[0]))
+            reason += '；已根据你说的风险承受调整回撤'
+        if any(w in text_low for w in ['收益', '回报', '赚', '跑赢', '年化']):
+            min_ret = max(3, min(20, nums[0]))
+            reason += '；已根据你说的收益目标调整'
+
+    return {'min_return': min_ret, 'max_drawdown': max_dd, 'reason': reason}
 
 
 @public_bp.route('/api/guide/screen')
