@@ -388,7 +388,7 @@ def calculate_dca():
                                        f"{fund_code}:{amount}:{frequency}:{start_date}:{end_date}")
         cached = get_cache(cache_key)
         if cached:
-            chart_html = _build_dca_chart(cached, fund_code, frequency)
+            chart_html = _build_dca_chart(cached, fund_code)
             return jsonify({'success': True, 'data': {**cached, 'chart': chart_html}})
 
         # 先用 1 年数据快速响应（~1.5s vs ~5s）
