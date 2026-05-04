@@ -8,8 +8,11 @@
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#0F172A;color:#F8FAFC;line-height:1.5;min-height:100vh}
 .container{max-width:640px;margin:0 auto;padding:32px 16px}
-.logo{font-size:18px;font-weight:600;color:#F59E0B;margin-bottom:8px}
-.subtitle{font-size:13px;color:#94A3B8;margin-bottom:28px}
+.nav-top{display:flex;align-items:center;gap:12px;margin-bottom:24px}
+.nav-top a{color:#94A3B8;text-decoration:none;font-size:13px}
+.nav-top a:hover{color:#F8FAFC}
+.logo{font-size:18px;font-weight:600;color:#F59E0B}
+.subtitle{font-size:13px;color:#94A3B8;margin-bottom:24px}
 .card{background:rgba(30,41,59,0.95);border:1px solid rgba(148,163,184,0.15);border-radius:12px;padding:24px;margin-bottom:16px}
 h2{font-size:17px;margin-bottom:8px}
 .step-badge{font-size:11px;background:rgba(245,158,11,0.15);color:#F59E0B;padding:2px 8px;border-radius:4px;margin-bottom:12px;display:inline-block}
@@ -18,8 +21,12 @@ h2{font-size:17px;margin-bottom:8px}
 .slider-value{font-weight:700;color:#F59E0B}
 input[type=range]{width:100%;height:6px;-webkit-appearance:none;background:rgba(148,163,184,0.2);border-radius:3px;outline:none;margin:8px 0}
 input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;background:#F59E0B;cursor:pointer;border:2px solid #0F172A}
-.result-count{text-align:center;padding:16px;font-size:14px;color:#94A3B8}
-.result-count strong{color:#F8FAFC;font-size:24px}
+
+/* hero result count */
+.hero-count{padding:24px 16px;text-align:center}
+.hero-count .big-num{font-size:64px;font-weight:700;color:#F59E0B;line-height:1.1}
+.hero-count .big-label{font-size:14px;color:#94A3B8;margin-top:4px}
+
 .fund-card{background:rgba(15,23,42,0.6);border:1px solid rgba(148,163,184,0.1);border-radius:8px;padding:16px;margin-bottom:8px}
 .fund-header{display:flex;justify-content:space-between;align-items:start;margin-bottom:8px}
 .fund-name{font-weight:600}
@@ -32,12 +39,29 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;heigh
 .fund-metrics .mv{font-weight:600}
 .positive{color:#EF4444}.negative{color:#10B981}
 .help-text{font-size:12px;color:#64748B;margin-top:6px;padding:8px;background:rgba(148,163,184,0.05);border-radius:4px}
-.empty{text-align:center;color:#64748B;padding:32px;font-size:14px}
+
+/* states */
+.spinner{display:inline-block;width:24px;height:24px;border:2px solid rgba(148,163,184,0.2);border-top-color:#F59E0B;border-radius:50%;animation:spin 0.6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-state{text-align:center;padding:40px 16px;color:#94A3B8}
+.empty-state{text-align:center;padding:40px 24px;color:#94A3B8}
+.empty-state .icon{font-size:36px;margin-bottom:8px}
+.error-state{text-align:center;padding:40px 24px;color:#94A3B8}
+.error-state button{background:rgba(245,158,11,0.15);color:#F59E0B;border:1px solid rgba(245,158,11,0.3);border-radius:6px;padding:8px 20px;margin-top:12px;font-size:13px;cursor:pointer;font-family:inherit}
+
+.reset-btn{font-size:12px;color:#94A3B8;background:none;border:1px solid rgba(148,163,184,0.2);border-radius:4px;padding:4px 12px;cursor:pointer;font-family:inherit;margin-top:8px}
+.reset-btn:hover{color:#F8FAFC;border-color:rgba(148,163,184,0.4)}
+
+.next-step{font-size:12px;color:#64748B;text-align:center;padding:16px;border-top:1px solid rgba(148,163,184,0.08);margin-top:20px}
 </style>
 </head>
 <body>
 <div class="container">
-    <div class="logo">基金投资教练</div>
+    <div class="nav-top">
+        <a href="/">← 返回主页</a>
+        <span style="color:#64748B;font-size:12px;">|</span>
+        <span class="logo">基金投资教练</span>
+    </div>
     <div class="subtitle">用 4P 三性方法论，找到适合你的基金组合</div>
 
     <div class="card">
@@ -47,7 +71,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;heigh
 
         <div class="slider-group">
             <div class="slider-label"><span>最低年化收益</span><span class="slider-value" id="retVal">8%</span></div>
-            <input type="range" id="retSlider" min="3" max="20" value="8" step="1">
+            <input type="range" id="retSlider" min="3" max="20" value="8" step="1" aria-label="最低年化收益，范围 3% 到 20%">
             <div style="display:flex;justify-content:space-between;font-size:11px;color:#64748B">
                 <span>3% (跑赢定存)</span><span>20% (高收益)</span>
             </div>
@@ -55,19 +79,24 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;heigh
 
         <div class="slider-group">
             <div class="slider-label"><span>最大可承受回撤</span><span class="slider-value" id="ddVal">20%</span></div>
-            <input type="range" id="ddSlider" min="5" max="40" value="20" step="1">
+            <input type="range" id="ddSlider" min="5" max="40" value="20" step="1" aria-label="最大可承受回撤，范围 5% 到 40%">
             <div style="display:flex;justify-content:space-between;font-size:11px;color:#64748B">
                 <span>5% (几乎不亏)</span><span>40% (能扛大波动)</span>
             </div>
         </div>
 
         <div class="help-text">
-            年化收益 = 过去 3 年的平均年化回报率。最大回撤 = 净值从最高点到最低点的最大跌幅。通常收益越高、回撤越大。
+            年化收益 = 过去 3 年的平均年化回报率。最大回撤 = 净值从最高点到最低点的最大跌幅。
         </div>
+        <button class="reset-btn" onclick="resetSliders()">重置为默认</button>
     </div>
 
     <div id="results">
-        <div class="empty">调整滑块后自动显示结果</div>
+        <div class="loading-state"><div class="spinner"></div><p style="margin-top:12px;">筛选基金中...</p></div>
+    </div>
+
+    <div class="next-step">
+        下一步：查看组合详情，了解每只基金的 4P 评分细节 →
     </div>
 </div>
 
@@ -81,20 +110,40 @@ function updateLabels() {
     document.getElementById('ddVal').textContent = ddSlider.value + '%';
 }
 
+function resetSliders() {
+    retSlider.value = 8;
+    ddSlider.value = 20;
+    updateLabels();
+    fetchResults();
+}
+
 function fetchResults() {
     var minRet = retSlider.value;
     var maxDD = ddSlider.value;
-    document.getElementById('results').innerHTML = '<div class="card" style="text-align:center;color:#94A3B8;">计算中...</div>';
+    document.getElementById('results').innerHTML =
+        '<div class="card"><div class="loading-state"><div class="spinner"></div><p style="margin-top:12px;">筛选基金中...</p></div></div>';
 
     fetch('/api/guide/screen?min_return=' + minRet + '&max_drawdown=' + maxDD)
         .then(function(r) { return r.json(); })
         .then(function(d) {
             var container = document.getElementById('results');
             if (!d.success || d.total === 0) {
-                container.innerHTML = '<div class="card"><div class="empty">没有符合条件的基金。<br>试试降低收益预期或放宽回撤限制</div></div>';
+                // Specific suggestion based on current slider values
+                var tip = '试试降低收益预期到 ' + Math.max(3, minRet - 3) + '%';
+                if (maxDD < 30) {
+                    tip += '，或放宽回撤限制到 ' + (parseInt(maxDD) + 10) + '%';
+                }
+                container.innerHTML =
+                    '<div class="card"><div class="empty-state">' +
+                    '<div class="icon">🔍</div>' +
+                    '<p>没有符合条件的基金</p><p style="font-size:13px;margin-top:4px;">' + tip + '</p>' +
+                    '</div></div>';
                 return;
             }
-            var html = '<div class="card"><div class="result-count">符合条件: <strong>' + d.total + '</strong> 只基金</div></div>';
+            var html = '<div class="card"><div class="hero-count">' +
+                '<div class="big-num">' + d.total + '</div>' +
+                '<div class="big-label">符合条件</div>' +
+                '</div></div>';
             d.top.forEach(function(f) {
                 html += '<div class="fund-card">' +
                     '<div class="fund-header">' +
@@ -117,7 +166,11 @@ function fetchResults() {
             container.innerHTML = html;
         })
         .catch(function() {
-            document.getElementById('results').innerHTML = '<div class="card"><div class="empty">网络错误，请稍后重试</div></div>';
+            document.getElementById('results').innerHTML =
+                '<div class="card"><div class="error-state">' +
+                '<p>网络请求失败</p>' +
+                '<button onclick="fetchResults()">重试</button>' +
+                '</div></div>';
         });
 }
 
