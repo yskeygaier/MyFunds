@@ -821,24 +821,25 @@ def _init_fund_scores_table():
 
 
 def _precompute_top_funds_async():
-    """后台线程：预热 top 30 基金的评分"""
+    """后台线程：全量预计算基金评分（分批，限流）"""
     def _run():
         from db import db_execute
         import time as _time
+        BATCH_SIZE = 50
+        BATCH_DELAY = 2  # 批次间隔秒，避免触发反爬
+
         try:
-            # 获取基金列表
-            rows = db_execute("SELECT code, name FROM fund_list_cache LIMIT ?",
-                              (TOP_FUNDS_WARMUP_COUNT,), fetch=True)
+            rows = db_execute("SELECT code, name FROM fund_list_cache", fetch=True)
             if not rows:
-                # fallback: 从 fund_basic 取
-                rows = db_execute("SELECT fund_code as code, fund_name as name FROM fund_basic LIMIT ?",
-                                  (TOP_FUNDS_WARMUP_COUNT,), fetch=True)
+                rows = db_execute("SELECT fund_code as code, fund_name as name FROM fund_basic", fetch=True)
             if not rows:
                 print("[scores] No fund list for precompute, skip")
                 return
-            print(f"[scores] Precomputing scores for {len(rows)} funds...")
+
+            total = len(rows)
             count = 0
-            for row in rows:
+            print(f"[scores] Full precompute: {total} funds in batches of {BATCH_SIZE}")
+            for i, row in enumerate(rows):
                 code = row.get('code', row.get('fund_code', ''))
                 name = row.get('name', row.get('fund_name', ''))
                 if not code:
@@ -851,7 +852,7 @@ def _precompute_top_funds_async():
                     p2, _, _ = _score_philosophy(info, info.get('前十大持仓', []))
                     p3, _, _ = _score_people(info)
                     p4, _, _ = _score_process(info, info.get('前十大持仓', []))
-                    total = p1 + p2 + p3 + p4
+                    total_score = p1 + p2 + p3 + p4
                     an = float(str(info.get('年化收益率', '0%')).replace('%', '').replace('nan', '0') or 0)
                     dd = abs(float(str(info.get('最大回撤', '0%')).replace('%', '').replace('nan', '0') or 0))
                     sr = float(str(info.get('夏普比率', '0')).replace('nan', '0') or 0)
@@ -865,12 +866,18 @@ def _precompute_top_funds_async():
                         "p4_process=VALUES(p4_process), total_score=VALUES(total_score), "
                         "annual_return=VALUES(annual_return), max_drawdown=VALUES(max_drawdown), "
                         "sharpe_ratio=VALUES(sharpe_ratio), updated_at=NOW()",
-                        (code, name, p1, p2, p3, p4, total, an, dd if dd > 0 else 0, sr),
+                        (code, name, p1, p2, p3, p4, total_score, an, dd if dd > 0 else 0, sr),
                         fetch=False)
                     count += 1
                 except Exception as e:
                     print(f"[scores] Skip {code}: {e}")
-            print(f"[scores] Precomputed {count}/{len(rows)} fund scores")
+
+                # 分批限流
+                if (i + 1) % BATCH_SIZE == 0 and i + 1 < total:
+                    print(f"[scores] Progress: {count}/{i+1} done, next batch in {BATCH_DELAY}s...")
+                    _time.sleep(BATCH_DELAY)
+
+            print(f"[scores] Full precompute done: {count}/{total} fund scores")
         except Exception as e:
             print(f"[scores] Precompute failed: {e}")
 
