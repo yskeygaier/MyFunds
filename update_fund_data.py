@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 # MySQL数据库配置
 MYSQL_CONFIG = {
     'user': 'yskey',
-    'password': 'yskey',
+    'password': os.environ.get('DB_PASSWORD', 'yskey'),
     'host': '127.0.0.1',
     'port': '3306',
     'database': 'fund_data'

@@ -221,7 +221,7 @@ if __name__ == '__main__':
         _db_init(
             mysql_config={
                 'user': 'yskey',
-                'password': 'yskey',
+                'password': os.environ.get('DB_PASSWORD', 'yskey'),
                 'host': '127.0.0.1',
                 'port': 3306,
                 'database': 'fund_data',
