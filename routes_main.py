@@ -5,11 +5,12 @@ from datetime import datetime
 import json
 from app import (
     generate_cache_key, get_cache, set_cache, delete_cache,
-    get_fund_name, get_mysql_pool,
+    get_mysql_pool,
     CACHE_CONFIG, memory_cache, REDIS_AVAILABLE, r,
     SQLITE_DB_PATH, FUND_NAME_MAP,
     _eastmoney_get
 )
+from routes_fund import get_fund_name
 
 main_bp = Blueprint('main', __name__)
 
