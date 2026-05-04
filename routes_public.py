@@ -179,16 +179,15 @@ def _rule_based_onboard(text: str):
     else:
         min_ret, max_dd, reason = 8, 22, '默认推荐：适合大多数投资者'
 
-    # 用户明确提到的数字优先
-    num_m = re.findall(r'(\d+)\s*%', text)
-    if num_m:
-        nums = [int(n) for n in num_m]
-        if any(w in text_low for w in ['亏', '回撤', '跌', '损失', '承受']):
-            max_dd = max(5, min(40, nums[0]))
-            reason += '；已根据你说的风险承受调整回撤'
-        if any(w in text_low for w in ['收益', '回报', '赚', '跑赢', '年化']):
-            min_ret = max(3, min(20, nums[0]))
-            reason += '；已根据你说的收益目标调整'
+    # 用户明确提到的数字优先（按关键字上下文匹配，而非取第一个数字）
+    ret_m = re.search(r'(?:收益|回报|赚|跑赢|年化|目标).*?(\d+)\s*%', text) or re.search(r'(\d+)\s*%.*?(?:收益|回报|赚|跑赢|年化)', text)
+    dd_m = re.search(r'(?:亏|回撤|跌|损失|承受|风险).*?(\d+)\s*%', text) or re.search(r'(\d+)\s*%.*?(?:亏|回撤|跌|损失|承受|风险)', text)
+    if ret_m:
+        min_ret = max(3, min(20, int(ret_m.group(1))))
+        reason += '；已根据你说的收益目标调整'
+    if dd_m:
+        max_dd = max(5, min(40, int(dd_m.group(1))))
+        reason += '；已根据你说的风险承受调整回撤'
 
     return {'min_return': min_ret, 'max_drawdown': max_dd, 'reason': reason}
 
@@ -242,7 +241,7 @@ def guide_compare():
 
 @public_bp.route('/api/guide/backtest-portfolio')
 def backtest_portfolio():
-    """组合回测：根据基金代码和权重计算组合历史净值"""
+    """组合回测：根据基金代码和权重计算组合历史净值（带缓存）"""
     codes_str = request.args.get('codes', '')
     weights_str = request.args.get('weights', '')
     codes = [c.strip() for c in codes_str.split(',') if c.strip()] if codes_str else []
@@ -255,6 +254,13 @@ def backtest_portfolio():
         weights = [float(w) / 100 for w in weights_raw]
     except ValueError:
         return jsonify({'success': False, 'error': '权重格式错误'})
+
+    # 缓存检查
+    cache_key = f"backtest:{':'.join(codes)}:{':'.join(weights_raw)}"
+    from app import get_cache, set_cache
+    cached = get_cache(cache_key)
+    if cached:
+        return jsonify(cached)
 
     from fund_crawler import crawl_fund_nav_df
     import pandas as pd
@@ -334,7 +340,7 @@ def backtest_portfolio():
             max_dd_date = portfolio_nav[i]['date']
     max_dd = round(max_dd, 2)
 
-    return jsonify({
+    result = {
         'success': True,
         'dates': [p['date'] for p in portfolio_nav],
         'navs': navs,
@@ -342,7 +348,9 @@ def backtest_portfolio():
         'max_drawdown': max_dd,
         'max_dd_date': max_dd_date,
         'data_points': len(portfolio_nav),
-    })
+    }
+    set_cache(cache_key, result, expiry=7200)
+    return jsonify(result)
 
 
 @public_bp.route('/api/guide/screen')
