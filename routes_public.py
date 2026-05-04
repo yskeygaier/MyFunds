@@ -1,10 +1,15 @@
 # -*- coding: utf-8 -*-
 """公开路由 Blueprint — 无需登录"""
-from flask import Blueprint, render_template, request, jsonify
+from flask import Blueprint, render_template, request, jsonify, send_from_directory
 from datetime import datetime
 from routes_analysis import _score_performance, _score_philosophy, _score_people, _score_process
 
 public_bp = Blueprint('public', __name__)
+
+
+@public_bp.route('/sitemap.xml')
+def sitemap():
+    return send_from_directory('templates', 'sitemap.xml')
 
 # 创始人实盘组合 ID（在 portfolio_manager 中创建）
 FOUNDER_PORTFOLIO_ID = 1
