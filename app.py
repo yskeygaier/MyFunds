@@ -245,6 +245,13 @@ if __name__ == '__main__':
         # 注册主页 + 搜索蓝图
         from routes_main import main_bp
         app.register_blueprint(main_bp)
+        # 注册公开路由（无需登录）+ 教练向导
+        from routes_public import public_bp
+        app.register_blueprint(public_bp)
+        # 教练向导页面
+        @app.route('/guide')
+        def guide_page():
+            return render_template('guide.html')
         # 注册基金信息 + 经理 + 估值蓝图
         from routes_fund import fund_bp
         app.register_blueprint(fund_bp)

@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>基金投资教练</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#0F172A;color:#F8FAFC;line-height:1.5;min-height:100vh}
+.container{max-width:640px;margin:0 auto;padding:32px 16px}
+.logo{font-size:18px;font-weight:600;color:#F59E0B;margin-bottom:8px}
+.subtitle{font-size:13px;color:#94A3B8;margin-bottom:28px}
+.card{background:rgba(30,41,59,0.95);border:1px solid rgba(148,163,184,0.15);border-radius:12px;padding:24px;margin-bottom:16px}
+h2{font-size:17px;margin-bottom:8px}
+.step-badge{font-size:11px;background:rgba(245,158,11,0.15);color:#F59E0B;padding:2px 8px;border-radius:4px;margin-bottom:12px;display:inline-block}
+.slider-group{margin-bottom:20px}
+.slider-label{display:flex;justify-content:space-between;margin-bottom:4px;font-size:14px}
+.slider-value{font-weight:700;color:#F59E0B}
+input[type=range]{width:100%;height:6px;-webkit-appearance:none;background:rgba(148,163,184,0.2);border-radius:3px;outline:none;margin:8px 0}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;background:#F59E0B;cursor:pointer;border:2px solid #0F172A}
+.result-count{text-align:center;padding:16px;font-size:14px;color:#94A3B8}
+.result-count strong{color:#F8FAFC;font-size:24px}
+.fund-card{background:rgba(15,23,42,0.6);border:1px solid rgba(148,163,184,0.1);border-radius:8px;padding:16px;margin-bottom:8px}
+.fund-header{display:flex;justify-content:space-between;align-items:start;margin-bottom:8px}
+.fund-name{font-weight:600}
+.fund-code{font-size:12px;color:#64748B}
+.fund-score{font-size:14px;font-weight:700;color:#F59E0B}
+.score-row{display:flex;gap:12px;font-size:12px;color:#94A3B8;margin-bottom:4px}
+.score-row span{background:rgba(148,163,184,0.08);padding:2px 6px;border-radius:3px}
+.fund-metrics{display:flex;gap:16px;font-size:13px;margin-top:8px}
+.fund-metrics .m{text-align:center}
+.fund-metrics .mv{font-weight:600}
+.positive{color:#EF4444}.negative{color:#10B981}
+.help-text{font-size:12px;color:#64748B;margin-top:6px;padding:8px;background:rgba(148,163,184,0.05);border-radius:4px}
+.empty{text-align:center;color:#64748B;padding:32px;font-size:14px}
+</style>
+</head>
+<body>
+<div class="container">
+    <div class="logo">基金投资教练</div>
+    <div class="subtitle">用 4P 三性方法论，找到适合你的基金组合</div>
+
+    <div class="card">
+        <span class="step-badge">步骤 1/2</span>
+        <h2>设定你的投资目标</h2>
+        <p style="font-size:13px;color:#94A3B8;margin-bottom:16px;">拖动滑块选择你期望的收益和能承受的风险范围</p>
+
+        <div class="slider-group">
+            <div class="slider-label"><span>最低年化收益</span><span class="slider-value" id="retVal">8%</span></div>
+            <input type="range" id="retSlider" min="3" max="20" value="8" step="1">
+            <div style="display:flex;justify-content:space-between;font-size:11px;color:#64748B">
+                <span>3% (跑赢定存)</span><span>20% (高收益)</span>
+            </div>
+        </div>
+
+        <div class="slider-group">
+            <div class="slider-label"><span>最大可承受回撤</span><span class="slider-value" id="ddVal">20%</span></div>
+            <input type="range" id="ddSlider" min="5" max="40" value="20" step="1">
+            <div style="display:flex;justify-content:space-between;font-size:11px;color:#64748B">
+                <span>5% (几乎不亏)</span><span>40% (能扛大波动)</span>
+            </div>
+        </div>
+
+        <div class="help-text">
+            年化收益 = 过去 3 年的平均年化回报率。最大回撤 = 净值从最高点到最低点的最大跌幅。通常收益越高、回撤越大。
+        </div>
+    </div>
+
+    <div id="results">
+        <div class="empty">调整滑块后自动显示结果</div>
+    </div>
+</div>
+
+<script>
+var timer = null;
+var retSlider = document.getElementById('retSlider');
+var ddSlider = document.getElementById('ddSlider');
+
+function updateLabels() {
+    document.getElementById('retVal').textContent = retSlider.value + '%';
+    document.getElementById('ddVal').textContent = ddSlider.value + '%';
+}
+
+function fetchResults() {
+    var minRet = retSlider.value;
+    var maxDD = ddSlider.value;
+    document.getElementById('results').innerHTML = '<div class="card" style="text-align:center;color:#94A3B8;">计算中...</div>';
+
+    fetch('/api/guide/screen?min_return=' + minRet + '&max_drawdown=' + maxDD)
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            var container = document.getElementById('results');
+            if (!d.success || d.total === 0) {
+                container.innerHTML = '<div class="card"><div class="empty">没有符合条件的基金。<br>试试降低收益预期或放宽回撤限制</div></div>';
+                return;
+            }
+            var html = '<div class="card"><div class="result-count">符合条件: <strong>' + d.total + '</strong> 只基金</div></div>';
+            d.top.forEach(function(f) {
+                html += '<div class="fund-card">' +
+                    '<div class="fund-header">' +
+                        '<div><div class="fund-name">' + f.fund_name + '</div><div class="fund-code">' + f.fund_code + '</div></div>' +
+                        '<div class="fund-score">' + f.total_score + '分</div>' +
+                    '</div>' +
+                    '<div class="score-row">' +
+                        '<span>P1业绩 ' + f.p1 + '/25</span>' +
+                        '<span>P2理念 ' + f.p2 + '/25</span>' +
+                        '<span>P3管理人 ' + f.p3 + '/30</span>' +
+                        '<span>P4流程 ' + f.p4 + '/20</span>' +
+                    '</div>' +
+                    '<div class="fund-metrics">' +
+                        '<div class="m"><div class="mv ' + (f.annual_return >= 0 ? 'positive' : 'negative') + '">' + (f.annual_return >= 0 ? '+' : '') + f.annual_return.toFixed(1) + '%</div><div style="font-size:11px;color:#94A3B8">年化收益</div></div>' +
+                        '<div class="m"><div class="mv" style="color:#10B981">' + f.max_drawdown.toFixed(1) + '%</div><div style="font-size:11px;color:#94A3B8">最大回撤</div></div>' +
+                        '<div class="m"><div class="mv">' + f.sharpe_ratio.toFixed(2) + '</div><div style="font-size:11px;color:#94A3B8">夏普比率</div></div>' +
+                    '</div>' +
+                '</div>';
+            });
+            container.innerHTML = html;
+        })
+        .catch(function() {
+            document.getElementById('results').innerHTML = '<div class="card"><div class="empty">网络错误，请稍后重试</div></div>';
+        });
+}
+
+retSlider.addEventListener('input', function() {
+    updateLabels();
+    clearTimeout(timer);
+    timer = setTimeout(fetchResults, 400);
+});
+ddSlider.addEventListener('input', function() {
+    updateLabels();
+    clearTimeout(timer);
+    timer = setTimeout(fetchResults, 400);
+});
+
+fetchResults();
+</script>
+</body>
+</html>

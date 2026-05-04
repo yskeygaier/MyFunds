@@ -789,5 +789,90 @@ def _generate_summary(name, total_4p, all_pass, three_natures, info, risk):
 def init_analysis_module():
     """初始化分析报告模块：MySQL建表 + 热点预热 + 定时调度"""
     _init_analysis_history_table()
+    _init_fund_scores_table()
     _warmup_top_funds_report()
+    _precompute_top_funds_async()
     _schedule_weekly_refresh()
+
+
+# ══════════════════════════════════════════════════════════════
+# 基金预评分表（教练向导快速筛选用）
+# ══════════════════════════════════════════════════════════════
+
+def _init_fund_scores_table():
+    """创建基金预评分表"""
+    from db import db_execute
+    db_execute('''
+        CREATE TABLE IF NOT EXISTS fund_scores (
+            fund_code VARCHAR(10) PRIMARY KEY,
+            fund_name VARCHAR(100),
+            p1_performance INT DEFAULT 0,
+            p2_philosophy INT DEFAULT 0,
+            p3_people INT DEFAULT 0,
+            p4_process INT DEFAULT 0,
+            total_score INT DEFAULT 0,
+            annual_return DECIMAL(8,2) DEFAULT 0,
+            max_drawdown DECIMAL(8,2) DEFAULT 0,
+            sharpe_ratio DECIMAL(8,2) DEFAULT 0,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    ''', fetch=False)
+    print("[scores] fund_scores table ready")
+
+
+def _precompute_top_funds_async():
+    """后台线程：预热 top 30 基金的评分"""
+    def _run():
+        from db import db_execute
+        import time as _time
+        try:
+            # 获取基金列表
+            rows = db_execute("SELECT code, name FROM fund_list_cache LIMIT ?",
+                              (TOP_FUNDS_WARMUP_COUNT,), fetch=True)
+            if not rows:
+                # fallback: 从 fund_basic 取
+                rows = db_execute("SELECT fund_code as code, fund_name as name FROM fund_basic LIMIT ?",
+                                  (TOP_FUNDS_WARMUP_COUNT,), fetch=True)
+            if not rows:
+                print("[scores] No fund list for precompute, skip")
+                return
+            print(f"[scores] Precomputing scores for {len(rows)} funds...")
+            count = 0
+            for row in rows:
+                code = row.get('code', row.get('fund_code', ''))
+                name = row.get('name', row.get('fund_name', ''))
+                if not code:
+                    continue
+                try:
+                    info = fetch_fund_info(code)
+                    if not info:
+                        continue
+                    p1, _, _ = _score_performance(info)
+                    p2, _, _ = _score_philosophy(info, info.get('前十大持仓', []))
+                    p3, _, _ = _score_people(info)
+                    p4, _, _ = _score_process(info, info.get('前十大持仓', []))
+                    total = p1 + p2 + p3 + p4
+                    an = float(str(info.get('年化收益率', '0%')).replace('%', '').replace('nan', '0') or 0)
+                    dd = abs(float(str(info.get('最大回撤', '0%')).replace('%', '').replace('nan', '0') or 0))
+                    sr = float(str(info.get('夏普比率', '0')).replace('nan', '0') or 0)
+
+                    db_execute(
+                        "INSERT INTO fund_scores (fund_code, fund_name, p1_performance, p2_philosophy, "
+                        "p3_people, p4_process, total_score, annual_return, max_drawdown, sharpe_ratio, updated_at) "
+                        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW()) "
+                        "ON DUPLICATE KEY UPDATE p1_performance=VALUES(p1_performance), "
+                        "p2_philosophy=VALUES(p2_philosophy), p3_people=VALUES(p3_people), "
+                        "p4_process=VALUES(p4_process), total_score=VALUES(total_score), "
+                        "annual_return=VALUES(annual_return), max_drawdown=VALUES(max_drawdown), "
+                        "sharpe_ratio=VALUES(sharpe_ratio), updated_at=NOW()",
+                        (code, name, p1, p2, p3, p4, total, an, dd if dd > 0 else 0, sr),
+                        fetch=False)
+                    count += 1
+                except Exception:
+                    pass
+            print(f"[scores] Precomputed {count} fund scores")
+        except Exception as e:
+            print(f"[scores] Precompute failed: {e}")
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
