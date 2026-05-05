@@ -803,6 +803,9 @@ def init_analysis_module():
 # 基金预评分表（教练向导快速筛选用）
 # ══════════════════════════════════════════════════════════════
 
+# 评分引擎版本号 — FundScreener 逻辑变更时递增，启动时自动清除旧数据
+SCORING_VERSION = 2
+
 def _init_fund_scores_table():
     """创建基金预评分表"""
     from db import db_execute
@@ -826,6 +829,16 @@ def _init_fund_scores_table():
         db_execute("ALTER TABLE fund_scores ADD COLUMN fund_type VARCHAR(20) DEFAULT ''", fetch=False)
     except Exception:
         pass
+    try:
+        db_execute("ALTER TABLE fund_scores ADD COLUMN scoring_version INT DEFAULT 0", fetch=False)
+    except Exception:
+        pass
+    # 清除旧版本评分数据，确保所有路径使用同一评分引擎
+    deleted = db_execute(
+        "DELETE FROM fund_scores WHERE scoring_version < %s OR scoring_version IS NULL",
+        (SCORING_VERSION,), fetch=False)
+    if deleted and deleted > 0:
+        print(f"[scores] Purged {deleted} stale rows (version < {SCORING_VERSION})")
     print("[scores] fund_scores table ready")
 
 
@@ -884,15 +897,16 @@ def _precompute_top_funds_async():
 
                     db_execute(
                         "INSERT INTO fund_scores (fund_code, fund_name, fund_type, p1_performance, p2_philosophy, "
-                        "p3_people, p4_process, total_score, annual_return, max_drawdown, sharpe_ratio, updated_at) "
-                        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW()) "
+                        "p3_people, p4_process, total_score, annual_return, max_drawdown, sharpe_ratio, "
+                        "scoring_version, updated_at) "
+                        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW()) "
                         "ON DUPLICATE KEY UPDATE fund_type=VALUES(fund_type), "
                         "p1_performance=VALUES(p1_performance), "
                         "p2_philosophy=VALUES(p2_philosophy), p3_people=VALUES(p3_people), "
                         "p4_process=VALUES(p4_process), total_score=VALUES(total_score), "
                         "annual_return=VALUES(annual_return), max_drawdown=VALUES(max_drawdown), "
                         "sharpe_ratio=VALUES(sharpe_ratio), updated_at=NOW()",
-                        (code, name, fund_type, p1, p2, p3, p4, total_score, an, dd if dd > 0 else 0, sr),
+                        (code, name, fund_type, p1, p2, p3, p4, total_score, an, dd if dd > 0 else 0, sr, SCORING_VERSION),
                         fetch=False)
                     count += 1
                 except Exception as e:
