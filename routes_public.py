@@ -446,28 +446,38 @@ def guide_screen():
     import random
     total = len(rows)
 
-    # 分层随机抽样：高分段多抽，低分段少抽
-    if total <= 5:
-        sample_count = total
-        sampled = rows[:]
+    # 分离债券基金和权益基金
+    bond_pool = [r for r in rows if r.get('fund_type') == '债券型']
+    equity_pool = [r for r in rows if r.get('fund_type') != '债券型']
+
+    # 保证至少 1-3 只债券基金出现在推荐中
+    if bond_pool:
+        bond_sample_n = min(len(bond_pool), random.randint(1, min(3, len(bond_pool))))
+        bond_sampled = random.sample(bond_pool, bond_sample_n) if bond_sample_n > 1 else [random.choice(bond_pool)]
     else:
-        sample_count = min(6, max(5, total))
-        top_n = max(3, int(sample_count * 0.5))
-        mid_n = min(sample_count - top_n, max(1, int(sample_count * 0.35)))
-        bot_n = sample_count - top_n - mid_n
-        top_cut = max(top_n, int(total * 0.25))
-        mid_cut = max(mid_n, int(total * 0.6))
+        bond_sampled = []
 
-        top_pool = rows[:top_cut]
-        mid_pool = rows[top_cut:mid_cut] if mid_cut > top_cut else []
-        bot_pool = rows[mid_cut:] if len(rows) > mid_cut else []
+    # 剩余名额从权益基金中分层抽样（总数 5-6 只）
+    remaining_slots = random.randint(5, 6) - len(bond_sampled)
+    remaining_slots = max(0, min(remaining_slots, len(equity_pool)))
 
-        sampled = (random.sample(top_pool, min(top_n, len(top_pool))) if top_pool else [])
-        if mid_pool:
-            sampled += random.sample(mid_pool, min(mid_n, len(mid_pool)))
-        if bot_pool:
-            sampled += random.sample(bot_pool, min(bot_n, len(bot_pool)))
-        random.shuffle(sampled)
+    eq_sampled = []
+    if equity_pool and remaining_slots > 0:
+        if len(equity_pool) <= remaining_slots:
+            eq_sampled = equity_pool[:]
+        else:
+            equity_sorted = sorted(equity_pool, key=lambda x: x['total_score'], reverse=True)
+            top_n = max(2, int(remaining_slots * 0.6))
+            mid_n = max(1, remaining_slots - top_n)
+            top_cut = max(top_n, int(len(equity_sorted) * 0.25))
+            top_pool = equity_sorted[:top_cut]
+            mid_pool = equity_sorted[top_cut:max(top_cut + mid_n, len(equity_sorted))]
+            eq_sampled = random.sample(top_pool, min(top_n, len(top_pool)))
+            if mid_pool and len(eq_sampled) < remaining_slots:
+                eq_sampled += random.sample(mid_pool, min(remaining_slots - len(eq_sampled), len(mid_pool)))
+
+    sampled = bond_sampled + eq_sampled
+    random.shuffle(sampled)
 
     result_funds = []
     for r in sampled:
