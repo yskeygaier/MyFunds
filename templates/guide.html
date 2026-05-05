@@ -536,8 +536,16 @@ function loadPortfolioChart(period) {
                 return;
             }
 
-            var dataPts = d.data_points || 0;
-            var annualRet = dataPts > 60 ? (d.total_return / (dataPts / 252) * 100) : d.total_return;
+            // CAGR: 优先使用 API 返回值，降级到前端计算
+            var annualRet = d.annualized_return;
+            if (annualRet == null) {
+                var dataPts = d.data_points || 0;
+                annualRet = d.total_return;
+                if (dataPts > 60) {
+                    var y = dataPts / 252;
+                    annualRet = (Math.pow(1 + d.total_return/100, 1/y) - 1) * 100;
+                }
+            }
 
             function render() {
                 var traces = [{
@@ -580,7 +588,7 @@ function loadPortfolioChart(period) {
                     showlegend: true, legend: {font: {size: 10, color: '#94A3B8'}},
                     height: 280,
                     annotations: [{
-                        text: '<b>总收益: ' + (d.total_return >= 0 ? '+' : '') + d.total_return.toFixed(2) + '%</b> | <b>年化: ' + (annualRet >= 0 ? '+' : '') + annualRet.toFixed(1) + '%</b>',
+                        text: '<b>总收益: ' + (d.total_return >= 0 ? '+' : '') + d.total_return.toFixed(2) + '%</b> | <b>年化(CAGR): ' + (annualRet >= 0 ? '+' : '') + annualRet.toFixed(1) + '%</b>',
                         x: 0.02, y: 0.98, xref: 'paper', yref: 'paper', showarrow: false,
                         font: {size: 13, color: pc}, bgcolor: 'rgba(15,23,42,0.8)', borderpad: 6
                     }, {

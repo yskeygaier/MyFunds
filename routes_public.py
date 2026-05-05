@@ -366,11 +366,16 @@ def backtest_portfolio():
             max_dd_date = portfolio_nav[i]['date']
     max_dd = round(max_dd, 2)
 
+    # 年化收益率 (CAGR)
+    years_calc = len(portfolio_nav) / 252
+    annualized = ((1 + total_return / 100) ** (1 / max(years_calc, 0.08)) - 1) * 100 if total_return > -100 else total_return
+
     result = {
         'success': True,
         'dates': [p['date'] for p in portfolio_nav],
         'navs': navs,
         'total_return': total_return,
+        'annualized_return': round(annualized, 2),
         'max_drawdown': max_dd,
         'max_dd_date': max_dd_date,
         'data_points': len(portfolio_nav),
