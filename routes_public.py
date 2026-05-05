@@ -537,23 +537,47 @@ def build_portfolio():
         else:
             equity_funds.append(r)
 
-    # 根据选中基金的平均回撤确定风险等级
-    avg_dd = sum(float(r['max_drawdown']) for r in rows) / len(rows)
-    if avg_dd <= 12:
-        equity_pct, bond_pct = 30, 70
-        risk_label = '保守'
-    elif avg_dd <= 18:
-        equity_pct, bond_pct = 50, 50
-        risk_label = '稳健'
-    elif avg_dd <= 25:
-        equity_pct, bond_pct = 65, 35
-        risk_label = '平衡'
-    elif avg_dd <= 32:
-        equity_pct, bond_pct = 80, 20
-        risk_label = '成长'
+    # 用户年龄（从请求参数获取，默认 35）
+    try:
+        user_age = int(request.args.get('age', 35))
+    except ValueError:
+        user_age = 35
+    user_age = max(18, min(80, user_age))
+
+    # 用户设定的最大回撤（从请求参数获取，默认 20）
+    try:
+        user_max_dd = float(request.args.get('max_drawdown', 20))
+    except ValueError:
+        user_max_dd = 20
+    user_max_dd = max(5.0, min(40.0, user_max_dd))
+
+    # ===== 动态股债配比模型 =====
+    # 参考：年龄法则（"120-年龄"）+ 风险平价 + 目标波动率（SOA 2025）
+    #
+    # Step 1: 基础权益比 = 120 - 年龄（生命周期理论）
+    base_equity = max(10.0, min(90.0, 120.0 - user_age))
+
+    # Step 2: 风险调整系数（根据用户设定的最大回撤）
+    if user_max_dd <= 10:
+        risk_mult, risk_label = 0.5, '保守'
+    elif user_max_dd <= 15:
+        risk_mult, risk_label = 0.75, '谨慎'
+    elif user_max_dd <= 20:
+        risk_mult, risk_label = 1.0, '平衡'
+    elif user_max_dd <= 30:
+        risk_mult, risk_label = 1.25, '成长'
     else:
-        equity_pct, bond_pct = 90, 10
-        risk_label = '激进'
+        risk_mult, risk_label = 1.5, '进取'
+
+    # Step 3: 最终权益比 = 基础 × 风险系数，限制 10%-90%
+    equity_pct_float = base_equity * risk_mult
+    equity_pct = max(10.0, min(90.0, equity_pct_float))
+    bond_pct = round(100.0 - equity_pct)
+    equity_pct = round(equity_pct)
+
+    # 确保权益+固收 = 100
+    if equity_pct + bond_pct != 100:
+        equity_pct = 100 - bond_pct
 
     # 如果只有一类基金，调整配比
     if not bond_funds:
@@ -565,7 +589,11 @@ def build_portfolio():
 
     # 股债配比解释
     explanation_lines = [
-        f'【{risk_label}型配置】根据所选基金平均回撤 {avg_dd:.1f}%，采用 {equity_pct}% 权益 + {bond_pct}% 固收的配比框架。',
+        f'【{risk_label}型配置】基于"120-年龄"生命周期法则（120-{user_age}={base_equity:.0f}%基础权益）'
+        f'× 风险调整系数 {risk_mult}（最大回撤≤{user_max_dd:.0f}%）'
+        f'→ 最终配比 {equity_pct}% 权益 + {bond_pct}% 固收。',
+        f'理论基础：年龄越大权益越低（退休后更需要稳定现金流），'
+        f'能承受的回撤越小固收占比越高（参考桥水全天候策略与 SOA 2025 目标波动率模型）。',
     ]
 
     # Calmar 加权分配
