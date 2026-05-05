@@ -446,9 +446,9 @@ def guide_screen():
     import random
     total = len(rows)
 
-    # 分离债券基金和权益基金
-    bond_pool = [r for r in rows if r.get('fund_type') == '债券型']
-    equity_pool = [r for r in rows if r.get('fund_type') != '债券型']
+    # 分离债券基金和权益基金（可转债波动大，归入权益池）
+    bond_pool = [r for r in rows if r.get('fund_type') == '债券型' and '可转债' not in r.get('fund_name', '') and '转债' not in r.get('fund_name', '')]
+    equity_pool = [r for r in rows if r not in bond_pool]
 
     # 保证至少 1-3 只债券基金出现在推荐中
     if bond_pool:
@@ -610,9 +610,12 @@ def build_portfolio():
         f'能承受的回撤越小固收占比越高（参考桥水全天候策略与 SOA 2025 目标波动率模型）。',
     ]
 
-    # Calmar 加权分配
+    # Calmar 加权分配（权重取整到 5 的倍数，方便操作）
     funds = []
-    layers = {}  # 记录每层的基金列表，方便生成解释
+    layers = {}
+
+    def _round_to_5(v):
+        return max(5, min(40, round(v / 5) * 5))
 
     def _allocate(pool, total_weight_pct, layer_name):
         if not pool or total_weight_pct <= 0:
@@ -624,12 +627,13 @@ def build_portfolio():
         layer_funds = []
         for r in pool:
             raw_w = calmar_scores[r['fund_code']] / total_calm * total_weight_pct
-            w = max(5.0, min(40.0, raw_w))
+            w = _round_to_5(raw_w)
             layer_funds.append((r, w))
-        # 归一化到目标权重
         layer_total = sum(w for _, w in layer_funds)
+        if layer_total == 0:
+            return
         for r, w in layer_funds:
-            final_w = round(w / layer_total * total_weight_pct, 1)
+            final_w = _round_to_5(w / layer_total * total_weight_pct)
             funds.append({
                 'fund_code': r['fund_code'],
                 'fund_name': r['fund_name'],
@@ -671,11 +675,18 @@ def build_portfolio():
             f'【固收部分 {bond_pct}%】配置债券型基金，提供稳定票息收益，降低组合整体波动。'
         )
 
-    # 权重约束检查与归一化
+    # 权重约束：确保和为 100，每只取 5 的倍数
     total_w = sum(f['weight'] for f in funds)
-    if total_w > 0 and abs(total_w - 100) > 0.5:
+    if total_w > 0 and total_w != 100:
+        # 按比例缩放后取整到 5
         for f in funds:
-            f['weight'] = round(f['weight'] / total_w * 100, 1)
+            f['weight'] = _round_to_5(f['weight'] / total_w * 100)
+    # 最终补齐差值（分配余数到权重最大的基金）
+    final_total = sum(f['weight'] for f in funds)
+    if final_total != 100 and funds:
+        funds.sort(key=lambda x: x['weight'], reverse=True)
+        diff = 100 - final_total
+        funds[0]['weight'] += diff
 
     portfolio_return = sum(f['annual_return'] * f['weight'] / 100 for f in funds)
     portfolio_dd = sum(f['max_drawdown'] * f['weight'] / 100 for f in funds)

@@ -908,6 +908,16 @@ def _precompute_top_funds_async():
                         "sharpe_ratio=VALUES(sharpe_ratio), updated_at=NOW()",
                         (code, name, fund_type, p1, p2, p3, p4, total_score, an, dd if dd > 0 else 0, sr, SCORING_VERSION),
                         fetch=False)
+                    # 同步更新 analysis_report 缓存（保证同一数据源的评分一致性）
+                    try:
+                        report = ReportGenerator.generate(result)
+                        report["source"] = "precompute_sync"
+                        report["generated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        report_cache_key = generate_cache_key(CACHE_CONFIG['fund_analysis_report']['prefix'], code)
+                        set_cache(report_cache_key, report, CACHE_CONFIG['fund_analysis_report']['expiry'])
+                        _save_report_to_mysql(code, report, _get_latest_week_number())
+                    except Exception:
+                        pass
                     count += 1
                 except Exception as e:
                     print(f"[scores] Skip {code}: {e}")
