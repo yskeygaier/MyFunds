@@ -608,15 +608,41 @@ def crawl_fund_full(fund_code: str) -> dict:
     """
     result = {'fund_code': fund_code}
 
+    # Step 1: 先获取基本信息（需要成立日期来确定历史数据年限）
+    basic_data = _fetch_fund_basic_info(fund_code)
+    result['基金经理'] = basic_data.get('基金经理', '')
+    result['基金经理公司'] = basic_data.get('管理人', '')
+    result['管理规模'] = basic_data.get('规模', '')
+    result['成立日期'] = basic_data.get('成立日期', '')
+    result['基金经理任职年限'] = basic_data.get('基金经理任职年限', '')
+
+    # Step 2: 根据成立日期计算实际年限（不满3年按实际年龄）
+    try:
+        est_date_str = basic_data.get('成立日期', '')
+        if est_date_str:
+            import re
+            from datetime import datetime as _dt
+            # 格式可能是 "2023年06月26日 / --" 或 "2023-06-26"
+            m = re.search(r'(\d{4})[年-](\d{1,2})[月-](\d{1,2})', str(est_date_str))
+            if m:
+                est = _dt(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+                actual_years = (_dt.now() - est).days / 365.25
+                hist_years = max(0.5, min(3.0, actual_years))
+            else:
+                hist_years = 3
+        else:
+            hist_years = 3
+    except Exception:
+        hist_years = 3
+
+    # Step 3: 并发获取其余数据
     with ThreadPoolExecutor(max_workers=4) as executor:
         f_nav = executor.submit(_fetch_realtime_nav, fund_code)
-        f_basic = executor.submit(_fetch_fund_basic_info, fund_code)
         f_hold = executor.submit(_fetch_holdings, fund_code)
-        f_hist = executor.submit(_fetch_nav_history_via_http, fund_code, 3)
+        f_hist = executor.submit(_fetch_nav_history_via_http, fund_code, hist_years)
         f_mgr = executor.submit(crawl_manager_fund_list, fund_code)
 
         nav_data = f_nav.result(timeout=8)
-        basic_data = f_basic.result(timeout=8)
         hold_data = f_hold.result(timeout=8)
         hist_data = f_hist.result(timeout=8)
         try:
@@ -626,13 +652,6 @@ def crawl_fund_full(fund_code: str) -> dict:
 
     # 实时净值
     result.update(nav_data)
-
-    # 基本信息（经理/公司/规模）
-    result['基金经理'] = basic_data.get('基金经理', '')
-    result['基金经理公司'] = basic_data.get('管理人', '')
-    result['管理规模'] = basic_data.get('规模', '')
-    result['成立日期'] = basic_data.get('成立日期', '')
-    result['基金经理任职年限'] = basic_data.get('基金经理任职年限', '')
 
     # 持仓
     result['前十大持仓_raw'] = hold_data.get('前十大持仓', [])
