@@ -255,8 +255,18 @@ def backtest_portfolio():
     except ValueError:
         return jsonify({'success': False, 'error': '权重格式错误'})
 
-    # 缓存检查
-    cache_key = f"backtest:{':'.join(codes)}:{':'.join(weights_raw)}"
+    # 时间段参数
+    try:
+        years = float(request.args.get('years', 1))
+    except ValueError:
+        years = 1
+    period_map = {'1m': 0.08, '3m': 0.25, '6m': 0.5, '1y': 1, '2y': 2, '3y': 3, '5y': 5, 'all': 10}
+    period_str = request.args.get('period', '')
+    if period_str in period_map:
+        years = period_map[period_str]
+
+    # 缓存检查（含时间段）
+    cache_key = f"backtest:{':'.join(codes)}:{':'.join(weights_raw)}:{years}"
     from app import get_cache, set_cache
     cached = get_cache(cache_key)
     if cached:
@@ -270,7 +280,7 @@ def backtest_portfolio():
 
     def _fetch_one(code):
         try:
-            data = crawl_fund_nav_df(code, years=1)
+            data = crawl_fund_nav_df(code, years=years)
             if data:
                 df = pd.DataFrame(data)
                 df['date'] = pd.to_datetime(df['净值日期'])

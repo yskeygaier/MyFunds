@@ -81,6 +81,9 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;heigh
 .compare-modal.active{display:block}
 .compare-modal-content{max-width:620px;margin:40px auto;background:#1E293B;border:1px solid rgba(148,163,184,0.2);border-radius:12px;padding:24px}
 .compare-modal-close{float:right;background:none;border:none;color:#94A3B8;font-size:20px;cursor:pointer}
+.period-btn{font-size:11px;background:rgba(148,163,184,0.08);color:#94A3B8;border:1px solid rgba(148,163,184,0.12);border-radius:4px;padding:4px 8px;cursor:pointer;font-family:inherit}
+.period-btn:hover{color:#F8FAFC;border-color:rgba(148,163,184,0.3)}
+.period-btn.active{background:rgba(245,158,11,0.15);color:#F59E0B;border-color:rgba(245,158,11,0.3)}
 </style>
 </head>
 <body>
@@ -488,7 +491,14 @@ function buildPortfolio() {
                 '<div style="margin-top:12px;">' +
                     '<button onclick="loadPortfolioChart()" id="chartLoadBtn" style="background:rgba(148,163,184,0.1);color:#F8FAFC;border:1px solid rgba(148,163,184,0.2);border-radius:6px;padding:8px 16px;font-size:13px;cursor:pointer;font-family:inherit;">📈 查看历史走势</button>' +
                 '</div>' +
-                '<div id="portfolioChart" style="margin-top:12px;height:260px;display:none;"></div>';
+                '<div style="margin-top:12px;display:flex;gap:4px;flex-wrap:wrap;" id="periodSelector">' +
+                    '<span style="font-size:11px;color:#64748B;line-height:28px;">周期:</span>' +
+                    ['1月','3月','6月','1年','2年','3年','5年','成立以来'].map(function(p,i) {
+                        var vals = ['1m','3m','6m','1y','2y','3y','5y','all'];
+                        return '<button onclick="loadPortfolioChart(\''+vals[i]+'\')" class="period-btn" data-period="'+vals[i]+'">'+p+'</button>';
+                    }).join('') +
+                '</div>' +
+                '<div id="portfolioChart" style="margin-top:8px;height:280px;display:none;"></div>';
             result.innerHTML = html;
             window._exportRaw = exportText;
         })
@@ -497,25 +507,29 @@ function buildPortfolio() {
         });
 }
 
-function loadPortfolioChart() {
+function loadPortfolioChart(period) {
+    period = period || '1y';
     var checked = document.querySelectorAll('.fund-check:checked');
     var codes = [], weights = [];
     checked.forEach(function(cb) {
         codes.push(cb.value);
-        // weight is stored in the step 2 result, or use equal weight
         var w = 100 / checked.length;
         weights.push(w.toFixed(0));
     });
     if (codes.length < 2) return;
 
+    // Highlight active period button
+    document.querySelectorAll('.period-btn').forEach(function(b) {
+        b.classList.toggle('active', b.dataset.period === period);
+    });
+
     var container = document.getElementById('portfolioChart');
     container.style.display = '';
     container.innerHTML = '<div class="loading-state"><div class="spinner"></div><p style="margin-top:8px;font-size:13px;">计算历史走势...</p></div>';
     var btn = document.getElementById('chartLoadBtn');
-    btn.disabled = true;
-    btn.textContent = '计算中...';
+    if (btn) { btn.disabled = true; btn.textContent = '计算中...'; }
 
-    fetch('/api/guide/backtest-portfolio?codes=' + codes.join(',') + '&weights=' + weights.join(','))
+    fetch('/api/guide/backtest-portfolio?codes=' + codes.join(',') + '&weights=' + weights.join(',') + '&period=' + period)
         .then(function(r) { return r.json(); })
         .then(function(d) {
             btn.style.display = 'none';
@@ -526,7 +540,7 @@ function loadPortfolioChart() {
 
             // Lazy-load Plotly if needed
             function render() {
-                var trace = {
+                var traces = [{
                     x: d.dates, y: d.navs,
                     type: 'scatter', mode: 'lines',
                     name: '组合净值',
@@ -534,23 +548,48 @@ function loadPortfolioChart() {
                     fillcolor: 'rgba(245,158,11,0.1)',
                     line: {color: '#F59E0B', width: 2, shape: 'spline', smoothing: 0.3},
                     hovertemplate: '%{x}<br>净值: %{y:.4f}<extra></extra>'
-                };
+                }];
+                // Drawdown zone highlight
+                var navs = d.navs, dates = d.dates;
+                if (navs && navs.length > 1) {
+                    var peak = navs[0], peakI = 0, troughI = 0, maxDd = 0;
+                    for (var i = 0; i < navs.length; i++) {
+                        if (navs[i] > peak) { peak = navs[i]; peakI = i; }
+                        var dd = (peak - navs[i]) / peak * 100;
+                        if (dd > maxDd) { maxDd = dd; troughI = i; }
+                    }
+                    if (peakI < troughI && troughI - peakI > 2) {
+                        traces.push({
+                            x: dates.slice(peakI, troughI + 1),
+                            y: navs.slice(peakI, troughI + 1),
+                            type: 'scatter', mode: 'lines',
+                            name: '最大回撤区间',
+                            line: {color: '#EF4444', width: 3, dash: 'dot'},
+                            hovertemplate: '回撤区间<extra></extra>'
+                        });
+                    }
+                }
                 var pc = d.total_return >= 0 ? '#EF4444' : '#10B981';
+                var ddC = d.max_drawdown > 15 ? '#EF4444' : '#F59E0B';
                 var layout = {
                     paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
                     xaxis: {color: '#94A3B8', gridcolor: 'rgba(148,163,184,0.08)'},
                     yaxis: {color: '#94A3B8', gridcolor: 'rgba(148,163,184,0.08)'},
-                    margin: {l:40, r:20, t:40, b:40},
+                    margin: {l:40, r:20, t:50, b:40},
                     font: {color: '#94A3B8', size: 10},
-                    showlegend: false, height: 260,
+                    showlegend: true, legend: {font: {size: 10, color: '#94A3B8'}},
+                    height: 280,
                     annotations: [{
-                        text: '总收益: ' + (d.total_return >= 0 ? '+' : '') + d.total_return.toFixed(2) + '% | 最大回撤: ' + d.max_drawdown.toFixed(1) + '% (' + d.max_dd_date + ')',
+                        text: '<b>总收益: ' + (d.total_return >= 0 ? '+' : '') + d.total_return.toFixed(2) + '%</b>',
                         x: 0.02, y: 0.98, xref: 'paper', yref: 'paper', showarrow: false,
-                        font: {size: 12, color: pc},
-                        bgcolor: 'rgba(15,23,42,0.8)', borderpad: 4
+                        font: {size: 14, color: pc}, bgcolor: 'rgba(15,23,42,0.8)', borderpad: 6
+                    }, {
+                        text: '<b>最大回撤: -' + d.max_drawdown.toFixed(1) + '%</b> (' + d.max_dd_date + ')',
+                        x: 0.02, y: 0.88, xref: 'paper', yref: 'paper', showarrow: false,
+                        font: {size: 12, color: ddC}, bgcolor: 'rgba(15,23,42,0.8)', borderpad: 4
                     }]
                 };
-                Plotly.newPlot('portfolioChart', [trace], layout, {responsive: true});
+                Plotly.newPlot('portfolioChart', traces, layout, {responsive: true});
             }
 
             if (typeof Plotly !== 'undefined') { render(); }
