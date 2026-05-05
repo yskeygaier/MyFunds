@@ -397,6 +397,9 @@ def _warmup_top_funds_report():
                     info = get_cache(info_cache_key)
                     source = 'redis_cache'
                     if not info:
+                        info = fetch_fund_info(code)
+                        source = 'crawler'
+                    if not info:
                         info = get_fund_info_from_db(code)
                         source = 'mysql_database'
                     if not info:
@@ -555,13 +558,14 @@ def get_analysis_report():
     t6 = time_module.time()
     source = 'redis_cache'
 
-    if not info:
-        info = get_fund_info_from_db(fund_code)
-        source = 'mysql_database'
-
+    # 优先使用新鲜数据（含完整基金经理详情），DB 数据作为降级
     if not info:
         info = fetch_fund_info(fund_code)
         source = 'crawler'
+
+    if not info:
+        info = get_fund_info_from_db(fund_code)
+        source = 'mysql_database'
 
     if not info:
         return jsonify({'success': False, 'message': f'无法获取基金 {fund_code} 的信息'})

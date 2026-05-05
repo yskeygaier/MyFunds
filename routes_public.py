@@ -378,8 +378,9 @@ def guide_screen():
         (min_return, max_drawdown), fetch=True)
 
     # 过滤不可购买基金：持有期/封闭/定开/锁定/大额限购
-    BLOCKED_KEYWORDS = ['持有期', '个月持有', '年持有', '封闭', '定期开放', '锁定', '定开', '限购', '暂停申购', '滚动持有']
-    rows = [r for r in rows if not any(kw in r['fund_name'] for kw in BLOCKED_KEYWORDS)]
+    BLOCKED_KEYWORDS = ['持有期', '个月持有', '年持有', '封闭', '定期开放', '锁定', '限购', '暂停申购', '滚动持有']
+    # 定开债基金在开放期可购买，不因"定开"关键词过滤
+    rows = [r for r in rows if (r.get('fund_type') == '债券型' and '定开' in r['fund_name']) or not any(kw in r['fund_name'] for kw in BLOCKED_KEYWORDS)]
 
     # 份额去重：同名基金（如XXX混合A/XXX混合C）只保留评分最高的份额
     seen_base = {}
