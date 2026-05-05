@@ -863,11 +863,17 @@ def _precompute_top_funds_async():
                         elif '混合' in raw_name: fund_type = '混合型'
                         elif '股票' in raw_name: fund_type = '股票型'
                         else: fund_type = '混合型'
-                    p1, _, _ = _score_performance(info)
-                    p2, _, _ = _score_philosophy(info, info.get('前十大持仓', []))
-                    p3, _, _ = _score_people(info)
-                    p4, _, _ = _score_process(info, info.get('前十大持仓', []))
-                    total_score = p1 + p2 + p3 + p4
+                    # 使用 FundScreener（与 analysis_report 相同的评分引擎）
+                    screener = FundScreener(
+                        fund_info=info,
+                        holdings={"前十大持仓": info.get('前十大持仓', [])}
+                    )
+                    result = screener.screen()
+                    fp = result.four_p
+                    if fp is None:
+                        continue
+                    p1, p2, p3, p4 = fp.performance, fp.philosophy, fp.people, fp.process
+                    total_score = fp.total
                     an = float(str(info.get('年化收益率', '0%')).replace('%', '').replace('nan', '0') or 0)
                     dd = abs(float(str(info.get('最大回撤', '0%')).replace('%', '').replace('nan', '0') or 0))
                     sr = float(str(info.get('夏普比率', '0')).replace('nan', '0') or 0)

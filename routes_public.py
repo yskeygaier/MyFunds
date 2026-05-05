@@ -2,7 +2,7 @@
 """公开路由 Blueprint — 无需登录"""
 from flask import Blueprint, render_template, request, jsonify, send_from_directory
 from datetime import datetime
-from routes_analysis import _score_performance, _score_philosophy, _score_people, _score_process
+from fund_analyzer import FundScreener
 import json
 import os
 import re
@@ -414,16 +414,19 @@ def guide_screen():
     if stale_codes:
         import threading
         def _refresh_stale():
-            for code in stale_codes[:3]:  # 最多刷新 3 只，避免过载
+            for code in stale_codes[:3]:
                 try:
                     from routes_fund import fetch_fund_info
                     info = fetch_fund_info(code)
                     if info:
-                        p1, _, _ = _score_performance(info)
-                        p2, _, _ = _score_philosophy(info, info.get('前十大持仓', []))
-                        p3, _, _ = _score_people(info)
-                        p4, _, _ = _score_process(info, info.get('前十大持仓', []))
-                        total = p1 + p2 + p3 + p4
+                        screener = FundScreener(
+                            fund_info=info,
+                            holdings={"前十大持仓": info.get('前十大持仓', [])}
+                        )
+                        result = screener.screen()
+                        fp = result.four_p
+                        if fp is None:
+                            continue
                         an = float(str(info.get('年化收益率', '0%')).replace('%', '').replace('nan', '0') or 0)
                         dd = abs(float(str(info.get('最大回撤', '0%')).replace('%', '').replace('nan', '0') or 0))
                         sr = float(str(info.get('夏普比率', '0')).replace('nan', '0') or 0)
@@ -431,7 +434,8 @@ def guide_screen():
                             "UPDATE fund_scores SET p1_performance=%s, p2_philosophy=%s, p3_people=%s, "
                             "p4_process=%s, total_score=%s, annual_return=%s, max_drawdown=%s, "
                             "sharpe_ratio=%s, updated_at=NOW() WHERE fund_code=%s",
-                            (p1, p2, p3, p4, total, an, dd, sr, code), fetch=False)
+                            (fp.performance, fp.philosophy, fp.people, fp.process,
+                             fp.total, an, dd, sr, code), fetch=False)
                 except Exception:
                     pass
         threading.Thread(target=_refresh_stale, daemon=True).start()
