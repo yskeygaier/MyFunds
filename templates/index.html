@@ -1466,6 +1466,16 @@
         initDatePickers();
         checkUserInfo();  // 页面加载时恢复登录状态
 
+        // URL参数：?code=000001 自动查询基金
+        (function() {
+            var params = new URLSearchParams(window.location.search);
+            var code = params.get('code');
+            if (code) {
+                document.getElementById('fundCode').value = code;
+                setTimeout(function() { searchFund(code); }, 300);
+            }
+        })();
+
         function showToast(message) {
             const existing = document.querySelector('.toast');
             if (existing) existing.remove();
