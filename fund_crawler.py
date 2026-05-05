@@ -612,7 +612,7 @@ def crawl_fund_full(fund_code: str) -> dict:
         f_nav = executor.submit(_fetch_realtime_nav, fund_code)
         f_basic = executor.submit(_fetch_fund_basic_info, fund_code)
         f_hold = executor.submit(_fetch_holdings, fund_code)
-        f_hist = executor.submit(_fetch_nav_history_via_http, fund_code, 1)
+        f_hist = executor.submit(_fetch_nav_history_via_http, fund_code, 3)
         f_mgr = executor.submit(crawl_manager_fund_list, fund_code)
 
         nav_data = f_nav.result(timeout=8)

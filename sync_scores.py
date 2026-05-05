@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""全量预计算 + 缓存同步：fund_scores 和 analysis_report 使用同一次 FundScreener 调用"""
+"""全量预计算 + 缓存同步（3年数据）：fund_scores 和 analysis_report 使用同一次 FundScreener 调用"""
 import sys, time, concurrent.futures, sqlite3
 sys.path.insert(0, '/media/yskey/文档/work/mytest')
 
