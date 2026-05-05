@@ -20,14 +20,30 @@ cur.execute("SELECT code, name FROM fund_list_cache")
 rows = [dict(r) for r in cur.fetchall()]
 conn.close()
 
-# Dedup
+# Filter: exclude B/E/Y/D/F/H/I/J etc shares, keep A/C and single-share funds
+EXCLUDED_SUFFIXES = set('BEYDFHIJKLMPQRTUVWXZ')
+def _keep_fund(name):
+    if len(name) < 2: return True
+    last = name[-1]
+    if last in EXCLUDED_SUFFIXES and len(name) > 1 and name[-2] not in 'AC':
+        return False
+    return True
+
+# Dedup + filter
 seen = set()
 unique = []
+excluded = 0
 for r in rows:
     code = r['code']
+    name = r.get('name', r.get('fund_name', ''))
+    if not _keep_fund(name):
+        excluded += 1
+        continue
     if code and code not in seen:
         seen.add(code)
         unique.append(r)
+
+print(f"Kept {len(unique)} funds, excluded {excluded} non-A/C shares", flush=True)
 
 total = len(unique)
 print(f"{time.strftime('%H:%M:%S')} Starting sync: {total} funds", flush=True)

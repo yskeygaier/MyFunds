@@ -408,15 +408,27 @@ def guide_screen():
         "ORDER BY total_score DESC",
         (min_return, max_drawdown), fetch=True)
 
-    # 过滤不可购买基金：持有期/封闭/定开/锁定/大额限购
+    # 过滤不可购买基金
     BLOCKED_KEYWORDS = ['持有期', '个月持有', '年持有', '封闭', '定期开放', '锁定', '定开', '限购', '暂停申购', '滚动持有']
     rows = [r for r in rows if not any(kw in r['fund_name'] for kw in BLOCKED_KEYWORDS)]
 
-    # 份额去重：同名基金（如XXX混合A/XXX混合C）只保留评分最高的份额
+    # 排除非主流份额（B/E/Y/D/F/H/I等），只保留A/C和单一份額基金
+    EXCLUDED_SUFFIXES = set('BEYDFHIJKLMPQRTUVWXZ')
+    def _is_ac_or_single(name):
+        if len(name) < 2: return True
+        last = name[-1]
+        if last in EXCLUDED_SUFFIXES and len(name) > 1 and name[-2] not in 'ABCDE':
+            return False
+        if last in EXCLUDED_SUFFIXES and len(name) > 2:
+            return False
+        return True
+    rows = [r for r in rows if _is_ac_or_single(r['fund_name'])]
+
+    # 份额去重：同名基金（A/C份额）按评分高者保留
     seen_base = {}
     deduped = []
     for r in rows:
-        base = r['fund_name'].rstrip('ABCDE')
+        base = r['fund_name'].rstrip('AC')
         if base not in seen_base or r['total_score'] > seen_base[base].get('total_score', 0):
             seen_base[base] = r
     deduped = sorted(seen_base.values(), key=lambda x: x['total_score'], reverse=True)
