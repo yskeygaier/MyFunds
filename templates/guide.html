@@ -483,6 +483,11 @@ function buildPortfolio() {
                     '<div style="font-weight:600;color:#F59E0B;margin-bottom:4px;">📋 组合配比说明</div>' +
                     esc(d.explanation).replace(/\n/g, '<br>') + '</div>';
             }
+            if (d.strategy) {
+                html += '<div style="background:rgba(16,185,129,0.05);border:1px solid rgba(16,185,129,0.15);border-radius:8px;padding:16px;margin-top:8px;">' +
+                    '<div style="font-weight:600;color:#10B981;margin-bottom:4px;">💡 买入建议：' + esc(d.strategy.name) + '</div>' +
+                    '<div style="font-size:13px;color:#94A3B8;line-height:1.6;">' + esc(d.strategy.detail) + '</div></div>';
+            }
             if (d.risk_level) {
                 html += '<div style="font-size:12px;color:#64748B;margin-top:4px;">风险等级: <span style="color:#F59E0B;">' + esc(d.risk_level) + '</span></div>';
             }

@@ -729,6 +729,18 @@ def build_portfolio():
         f'体现了"同等收益下优先选择更稳定的基金"的原则。'
     )
 
+    # 买入策略推荐（根据组合最大回撤）
+    if portfolio_dd < 8:
+        strategy = '一次性买入'
+        strategy_detail = '组合波动低（回撤<8%），一次性全额买入可最大化资金利用效率，无需择时。建议在近期净值回调日买入。'
+    elif portfolio_dd < 18:
+        strategy = '分批买入'
+        batches = 3 if portfolio_dd < 13 else 4
+        strategy_detail = f'组合波动适中（回撤{portfolio_dd:.0f}%），建议分{batches}批买入，每批间隔1-2周。例如总资金{batches*5}万，每批{(batches*5)//batches}万。避免一次性买在高点。'
+    else:
+        strategy = '定投买入'
+        strategy_detail = f'组合波动较大（回撤{portfolio_dd:.0f}%），建议采用定投策略。每月固定金额买入，坚持12个月以上，利用波动摊平成本。熊市多买份额，牛市享受收益。'
+
     return jsonify({
         'success': True,
         'funds': funds,
@@ -739,4 +751,5 @@ def build_portfolio():
         },
         'explanation': '\n'.join(explanation_lines),
         'risk_level': risk_label,
+        'strategy': {'name': strategy, 'detail': strategy_detail},
     })
