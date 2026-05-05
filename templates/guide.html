@@ -525,20 +525,20 @@ function loadPortfolioChart(period) {
 
     var container = document.getElementById('portfolioChart');
     container.style.display = '';
+    container.style.display = '';
     container.innerHTML = '<div class="loading-state"><div class="spinner"></div><p style="margin-top:8px;font-size:13px;">计算历史走势...</p></div>';
-    var btn = document.getElementById('chartLoadBtn');
-    if (btn) { btn.disabled = true; btn.textContent = '计算中...'; }
 
     fetch('/api/guide/backtest-portfolio?codes=' + codes.join(',') + '&weights=' + weights.join(',') + '&period=' + period)
         .then(function(r) { return r.json(); })
         .then(function(d) {
-            btn.style.display = 'none';
             if (!d.success) {
                 container.innerHTML = '<p style="color:#64748B;font-size:13px;text-align:center;">' + esc(d.error) + '</p>';
                 return;
             }
 
-            // Lazy-load Plotly if needed
+            var dataPts = d.data_points || 0;
+            var annualRet = dataPts > 60 ? (d.total_return / (dataPts / 252) * 100) : d.total_return;
+
             function render() {
                 var traces = [{
                     x: d.dates, y: d.navs,
@@ -580,13 +580,13 @@ function loadPortfolioChart(period) {
                     showlegend: true, legend: {font: {size: 10, color: '#94A3B8'}},
                     height: 280,
                     annotations: [{
-                        text: '<b>总收益: ' + (d.total_return >= 0 ? '+' : '') + d.total_return.toFixed(2) + '%</b>',
+                        text: '<b>总收益: ' + (d.total_return >= 0 ? '+' : '') + d.total_return.toFixed(2) + '%</b> | <b>年化: ' + (annualRet >= 0 ? '+' : '') + annualRet.toFixed(1) + '%</b>',
                         x: 0.02, y: 0.98, xref: 'paper', yref: 'paper', showarrow: false,
-                        font: {size: 14, color: pc}, bgcolor: 'rgba(15,23,42,0.8)', borderpad: 6
+                        font: {size: 13, color: pc}, bgcolor: 'rgba(15,23,42,0.8)', borderpad: 6
                     }, {
                         text: '<b>最大回撤: -' + d.max_drawdown.toFixed(1) + '%</b> (' + d.max_dd_date + ')',
                         x: 0.02, y: 0.88, xref: 'paper', yref: 'paper', showarrow: false,
-                        font: {size: 12, color: ddC}, bgcolor: 'rgba(15,23,42,0.8)', borderpad: 4
+                        font: {size: 11, color: ddC}, bgcolor: 'rgba(15,23,42,0.8)', borderpad: 4
                     }]
                 };
                 Plotly.newPlot('portfolioChart', traces, layout, {responsive: true});
@@ -601,9 +601,7 @@ function loadPortfolioChart(period) {
             }
         })
         .catch(function() {
-            container.innerHTML = '<p style="color:#64748B;font-size:13px;text-align:center;">加载失败</p>';
-            btn.disabled = false;
-            btn.textContent = '📈 查看历史走势';
+            container.innerHTML = '<p style="color:#64748B;font-size:13px;text-align:center;">加载失败，请重试</p>';
         });
 }
 

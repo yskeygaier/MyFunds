@@ -277,10 +277,26 @@ def backtest_portfolio():
     import concurrent.futures
 
     fund_navs = {}
+    # 成立以来：先探测各基金实际数据范围，取最短的
+    actual_years = years
+    if period_str == 'all':
+        def _probe(code):
+            try:
+                d = crawl_fund_nav_df(code, years=10)
+                if d and len(d) > 5:
+                    dates = [pd.to_datetime(r.get('净值日期', r.get('date', ''))) for r in d if r.get('净值日期') or r.get('date')]
+                    if dates:
+                        return (max(dates) - min(dates)).days / 365.25
+                return 10
+            except Exception:
+                return 10
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(codes), 5)) as executor:
+            probes = list(executor.map(_probe, codes))
+        actual_years = max(0.5, min(probes)) if probes else years
 
     def _fetch_one(code):
         try:
-            data = crawl_fund_nav_df(code, years=years)
+            data = crawl_fund_nav_df(code, years=actual_years)
             if data:
                 df = pd.DataFrame(data)
                 df['date'] = pd.to_datetime(df['净值日期'])
