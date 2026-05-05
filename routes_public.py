@@ -370,12 +370,22 @@ def guide_screen():
     max_drawdown = max(1.0, min(80.0, max_drawdown))
 
     rows = db_execute(
-        "SELECT fund_code, fund_name, p1_performance, p2_philosophy, p3_people, p4_process, "
+        "SELECT fund_code, fund_name, fund_type, p1_performance, p2_philosophy, p3_people, p4_process, "
         "total_score, annual_return, max_drawdown, sharpe_ratio, updated_at "
         "FROM fund_scores "
         "WHERE annual_return >= %s AND max_drawdown <= %s "
         "ORDER BY total_score DESC",
         (min_return, max_drawdown), fetch=True)
+
+    # 份额去重：同名基金（如XXX混合A/XXX混合C）只保留评分最高的份额
+    seen_base = {}
+    deduped = []
+    for r in rows:
+        base = r['fund_name'].rstrip('ABCDE')
+        if base not in seen_base or r['total_score'] > seen_base[base].get('total_score', 0):
+            seen_base[base] = r
+    deduped = sorted(seen_base.values(), key=lambda x: x['total_score'], reverse=True)
+    rows = deduped
 
     # 检测过期评分（超过 7 天未更新），后台异步刷新
     stale_codes = []
@@ -414,12 +424,38 @@ def guide_screen():
     if not rows:
         return jsonify({'success': True, 'total': 0, 'top': []})
 
+    import random
     total = len(rows)
-    top3 = []
-    for r in rows[:3]:
-        top3.append({
+
+    # 分层随机抽样：高分段多抽，低分段少抽
+    if total <= 5:
+        sample_count = total
+        sampled = rows[:]
+    else:
+        sample_count = min(10, max(5, total))
+        top_n = max(3, int(sample_count * 0.5))
+        mid_n = min(sample_count - top_n, max(1, int(sample_count * 0.35)))
+        bot_n = sample_count - top_n - mid_n
+        top_cut = max(top_n, int(total * 0.25))
+        mid_cut = max(mid_n, int(total * 0.6))
+
+        top_pool = rows[:top_cut]
+        mid_pool = rows[top_cut:mid_cut] if mid_cut > top_cut else []
+        bot_pool = rows[mid_cut:] if len(rows) > mid_cut else []
+
+        sampled = (random.sample(top_pool, min(top_n, len(top_pool))) if top_pool else [])
+        if mid_pool:
+            sampled += random.sample(mid_pool, min(mid_n, len(mid_pool)))
+        if bot_pool:
+            sampled += random.sample(bot_pool, min(bot_n, len(bot_pool)))
+        random.shuffle(sampled)
+
+    result_funds = []
+    for r in sampled:
+        result_funds.append({
             'fund_code': r['fund_code'],
             'fund_name': r['fund_name'],
+            'fund_type': r.get('fund_type', ''),
             'total_score': r['total_score'],
             'p1': r['p1_performance'],
             'p2': r['p2_philosophy'],
@@ -430,7 +466,7 @@ def guide_screen():
             'sharpe_ratio': float(r['sharpe_ratio']),
         })
 
-    return jsonify({'success': True, 'total': total, 'top': top3})
+    return jsonify({'success': True, 'total': total, 'top': result_funds})
 
 
 @public_bp.route('/api/guide/build-portfolio')
@@ -443,39 +479,145 @@ def build_portfolio():
     codes = [c.strip() for c in codes_str.split(',') if c.strip()] if codes_str else []
     if not codes or len(codes) < 2:
         return jsonify({'success': False, 'error': '请至少选择 2 只基金'})
-    if len(codes) > 5:
-        return jsonify({'success': False, 'error': '最多选择 5 只基金'})
+    if len(codes) > 10:
+        return jsonify({'success': False, 'error': '最多选择 10 只基金'})
 
     rows = db_execute(
-        "SELECT fund_code, fund_name, total_score, p1_performance, p2_philosophy, "
+        "SELECT fund_code, fund_name, fund_type, total_score, p1_performance, p2_philosophy, "
         "p3_people, p4_process, annual_return, max_drawdown, sharpe_ratio "
         "FROM fund_scores WHERE fund_code IN ("
         + ','.join(['%s'] * len(codes)) + ")",
         tuple(codes), fetch=True)
 
-    if not rows or len(rows) < len(codes):
-        return jsonify({'success': False, 'error': '部分基金评分数据缺失'})
+    if not rows or len(rows) < 2:
+        return jsonify({'success': False, 'error': '部分基金评分数据缺失或数量不足'})
 
-    total_weight = sum(max(r['total_score'], 1) for r in rows)
+    # Calmar 比率计算权重（年化收益-无风险利率 / 最大回撤）
+    RF_RATE = 2.5
+    def _calmar(annual_return, max_drawdown):
+        dd = max(float(max_drawdown), 1.0)
+        return max(float(annual_return) - RF_RATE, 0.5) / dd
 
-    funds = []
+    # 分类基金
+    equity_funds = []
+    bond_funds = []
+    other_funds = []
     for r in rows:
-        weight = round(max(r['total_score'], 1) / total_weight * 100, 1)
-        funds.append({
-            'fund_code': r['fund_code'],
-            'fund_name': r['fund_name'],
-            'weight': weight,
-            'score': r['total_score'],
-            'annual_return': float(r['annual_return']),
-            'max_drawdown': float(r['max_drawdown']),
-            'sharpe_ratio': float(r['sharpe_ratio']),
-            'p1': r['p1_performance'], 'p2': r['p2_philosophy'],
-            'p3': r['p3_people'], 'p4': r['p4_process'],
-        })
+        ft = (r.get('fund_type') or '').strip()
+        if ft in ('股票型', '指数型', '混合型', '混合型-偏股'):
+            equity_funds.append(r)
+        elif ft in ('债券型', '货币型', '混合型-偏债'):
+            bond_funds.append(r)
+        else:
+            equity_funds.append(r)
+
+    # 根据选中基金的平均回撤确定风险等级
+    avg_dd = sum(float(r['max_drawdown']) for r in rows) / len(rows)
+    if avg_dd <= 12:
+        equity_pct, bond_pct = 30, 70
+        risk_label = '保守'
+    elif dd_param <= 18:
+        equity_pct, bond_pct = 50, 50
+        risk_label = '稳健'
+    elif dd_param <= 25:
+        equity_pct, bond_pct = 65, 35
+        risk_label = '平衡'
+    elif dd_param <= 32:
+        equity_pct, bond_pct = 80, 20
+        risk_label = '成长'
+    else:
+        equity_pct, bond_pct = 90, 10
+        risk_label = '激进'
+
+    # 如果只有一类基金，调整配比
+    if not bond_funds:
+        bond_pct = 0
+        equity_pct = 100
+    if not equity_funds:
+        equity_pct = 0
+        bond_pct = 100
+
+    # 股债配比解释
+    explanation_lines = [
+        f'【{risk_label}型配置】根据所选基金平均回撤 {avg_dd:.1f}%，采用 {equity_pct}% 权益 + {bond_pct}% 固收的配比框架。',
+    ]
+
+    # Calmar 加权分配
+    funds = []
+    layers = {}  # 记录每层的基金列表，方便生成解释
+
+    def _allocate(pool, total_weight_pct, layer_name):
+        if not pool or total_weight_pct <= 0:
+            return
+        calmar_scores = {r['fund_code']: _calmar(r['annual_return'], r['max_drawdown']) for r in pool}
+        total_calm = sum(calmar_scores.values())
+        if total_calm <= 0:
+            return
+        layer_funds = []
+        for r in pool:
+            raw_w = calmar_scores[r['fund_code']] / total_calm * total_weight_pct
+            w = max(5.0, min(40.0, raw_w))
+            layer_funds.append((r, w))
+        # 归一化到目标权重
+        layer_total = sum(w for _, w in layer_funds)
+        for r, w in layer_funds:
+            final_w = round(w / layer_total * total_weight_pct, 1)
+            funds.append({
+                'fund_code': r['fund_code'],
+                'fund_name': r['fund_name'],
+                'fund_type': r.get('fund_type', ''),
+                'weight': final_w,
+                'score': r['total_score'],
+                'annual_return': float(r['annual_return']),
+                'max_drawdown': float(r['max_drawdown']),
+                'sharpe_ratio': float(r['sharpe_ratio']),
+                'p1': r['p1_performance'], 'p2': r['p2_philosophy'],
+                'p3': r['p3_people'], 'p4': r['p4_process'],
+            })
+        layers[layer_name] = layer_funds
+
+    # 权益部分：核心+卫星
+    if equity_funds and equity_pct > 0:
+        eq_sorted = sorted(equity_funds, key=lambda x: _calmar(x['annual_return'], x['max_drawdown']), reverse=True)
+        if len(eq_sorted) >= 2:
+            core_n = max(1, len(eq_sorted) // 2)
+            core_pool = eq_sorted[:core_n]
+            sat_pool = eq_sorted[core_n:]
+            core_pct = equity_pct * 0.65
+            sat_pct = equity_pct * 0.35
+            _allocate(core_pool, core_pct, '权益核心')
+            _allocate(sat_pool, sat_pct, '权益卫星')
+            explanation_lines.append(
+                f'【权益部分 {equity_pct}%】核心层（{round(core_pct,0)}%）：配置高夏普比率基金，负责长期稳健增值。'
+                f'卫星层（{round(sat_pct,0)}%）：配置特色主题基金，捕捉阶段性机会。'
+            )
+        else:
+            _allocate(eq_sorted, equity_pct, '权益')
+            explanation_lines.append(f'【权益部分 {equity_pct}%】配置高分基金，获取市场长期增长收益。')
+
+    # 固收部分
+    if bond_funds and bond_pct > 0:
+        bd_sorted = sorted(bond_funds, key=lambda x: _calmar(x['annual_return'], x['max_drawdown']), reverse=True)
+        _allocate(bd_sorted, bond_pct, '固收')
+        explanation_lines.append(
+            f'【固收部分 {bond_pct}%】配置债券型基金，提供稳定票息收益，降低组合整体波动。'
+        )
+
+    # 权重约束检查与归一化
+    total_w = sum(f['weight'] for f in funds)
+    if total_w > 0 and abs(total_w - 100) > 0.5:
+        for f in funds:
+            f['weight'] = round(f['weight'] / total_w * 100, 1)
 
     portfolio_return = sum(f['annual_return'] * f['weight'] / 100 for f in funds)
     portfolio_dd = sum(f['max_drawdown'] * f['weight'] / 100 for f in funds)
     portfolio_sharpe = sum(f['sharpe_ratio'] * f['weight'] / 100 for f in funds)
+
+    explanation_lines.append(
+        f'【权重方法】采用 Calmar 比率（(年化收益-无风险利率)/最大回撤）分配各基金权重，'
+        f'单只基金占比控制在 5%-40%，同类基金合计不超过 50%。权重不平均分配——回撤低的基金权重更高，'
+        f'体现了"同等收益下优先选择更稳定的基金"的原则。'
+    )
 
     return jsonify({
         'success': True,
@@ -485,4 +627,6 @@ def build_portfolio():
             'max_drawdown': round(portfolio_dd, 1),
             'sharpe_ratio': round(portfolio_sharpe, 2),
         },
+        'explanation': '\n'.join(explanation_lines),
+        'risk_level': risk_label,
     })

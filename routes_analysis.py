@@ -806,6 +806,7 @@ def _init_fund_scores_table():
         CREATE TABLE IF NOT EXISTS fund_scores (
             fund_code VARCHAR(10) PRIMARY KEY,
             fund_name VARCHAR(100),
+            fund_type VARCHAR(20) DEFAULT '',
             p1_performance INT DEFAULT 0,
             p2_philosophy INT DEFAULT 0,
             p3_people INT DEFAULT 0,
@@ -817,6 +818,10 @@ def _init_fund_scores_table():
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     ''', fetch=False)
+    try:
+        db_execute("ALTER TABLE fund_scores ADD COLUMN fund_type VARCHAR(20) DEFAULT ''", fetch=False)
+    except Exception:
+        pass
     print("[scores] fund_scores table ready")
 
 
@@ -848,6 +853,16 @@ def _precompute_top_funds_async():
                     info = fetch_fund_info(code)
                     if not info:
                         continue
+                    # 提取基金类型
+                    fund_type = str(info.get('基金类型', info.get('fund_type', '')))
+                    if not fund_type:
+                        raw_name = info.get('基金简称', '')
+                        if '债券' in raw_name or '债' in raw_name: fund_type = '债券型'
+                        elif '货币' in raw_name: fund_type = '货币型'
+                        elif '指数' in raw_name or 'ETF' in raw_name: fund_type = '指数型'
+                        elif '混合' in raw_name: fund_type = '混合型'
+                        elif '股票' in raw_name: fund_type = '股票型'
+                        else: fund_type = '混合型'
                     p1, _, _ = _score_performance(info)
                     p2, _, _ = _score_philosophy(info, info.get('前十大持仓', []))
                     p3, _, _ = _score_people(info)
@@ -858,15 +873,16 @@ def _precompute_top_funds_async():
                     sr = float(str(info.get('夏普比率', '0')).replace('nan', '0') or 0)
 
                     db_execute(
-                        "INSERT INTO fund_scores (fund_code, fund_name, p1_performance, p2_philosophy, "
+                        "INSERT INTO fund_scores (fund_code, fund_name, fund_type, p1_performance, p2_philosophy, "
                         "p3_people, p4_process, total_score, annual_return, max_drawdown, sharpe_ratio, updated_at) "
-                        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW()) "
-                        "ON DUPLICATE KEY UPDATE p1_performance=VALUES(p1_performance), "
+                        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW()) "
+                        "ON DUPLICATE KEY UPDATE fund_type=VALUES(fund_type), "
+                        "p1_performance=VALUES(p1_performance), "
                         "p2_philosophy=VALUES(p2_philosophy), p3_people=VALUES(p3_people), "
                         "p4_process=VALUES(p4_process), total_score=VALUES(total_score), "
                         "annual_return=VALUES(annual_return), max_drawdown=VALUES(max_drawdown), "
                         "sharpe_ratio=VALUES(sharpe_ratio), updated_at=NOW()",
-                        (code, name, p1, p2, p3, p4, total_score, an, dd if dd > 0 else 0, sr),
+                        (code, name, fund_type, p1, p2, p3, p4, total_score, an, dd if dd > 0 else 0, sr),
                         fetch=False)
                     count += 1
                 except Exception as e:

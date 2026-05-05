@@ -326,6 +326,9 @@ function onCheckChange() {
     } else if (n > 3) {
         compareBtn.disabled = true;
         compareBtn.textContent = '最多对比 3 只';
+    } else if (n > 10) {
+        buildBtn.disabled = true;
+        buildBtn.textContent = '最多选择 10 只';
     } else {
         compareBtn.disabled = true;
         compareBtn.textContent = '对比 (2-3 只)';
@@ -433,6 +436,14 @@ function buildPortfolio() {
             exportText += '\n预期年化: ' + (m.annual_return >= 0 ? '+' : '') + m.annual_return.toFixed(1) + '% | 预期回撤: ' + m.max_drawdown.toFixed(1) + '% | 夏普: ' + m.sharpe_ratio.toFixed(2) + '\n';
             exportText += '\n在天天基金或支付宝搜索基金代码即可买入。\n组合由 4P 三性方法论生成。';
 
+            if (d.explanation) {
+                html += '<div style="background:rgba(245,158,11,0.05);border:1px solid rgba(245,158,11,0.15);border-radius:8px;padding:16px;margin-top:12px;font-size:13px;color:#94A3B8;line-height:1.8;">' +
+                    '<div style="font-weight:600;color:#F59E0B;margin-bottom:4px;">📋 组合配比说明</div>' +
+                    esc(d.explanation).replace(/\n/g, '<br>') + '</div>';
+            }
+            if (d.risk_level) {
+                html += '<div style="font-size:12px;color:#64748B;margin-top:4px;">风险等级: <span style="color:#F59E0B;">' + esc(d.risk_level) + '</span></div>';
+            }
             html += '<div class="export-area" id="exportText">' + exportText.replace(/\n/g, '<br>') + '</div>' +
                 '<button class="copy-btn" onclick="copyExport()">复制到剪贴板</button>' +
                 '<span style="font-size:12px;color:#64748B;margin-left:8px;" id="copyMsg"></span>' +
