@@ -277,7 +277,12 @@ function fetchResults() {
                     '</div>' +
                 '</div>';
             });
-            html += '<div style="display:flex;gap:8px;margin-top:8px;">' +
+            html += '<div style="display:flex;gap:4px;margin-top:8px;align-items:center;">' +
+                '<label style="font-size:12px;color:#94A3B8;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:4px;">' +
+                    '<input type="checkbox" id="selectAll" onchange="toggleSelectAll()" style="accent-color:#F59E0B;width:16px;height:16px;">全选' +
+                '</label>' +
+                '</div>' +
+                '<div style="display:flex;gap:8px;margin-top:4px;">' +
                 '<button id="compareBtn" onclick="compareFunds()" disabled style="flex:1;background:rgba(148,163,184,0.1);color:#F8FAFC;border:1px solid rgba(148,163,184,0.2);padding:12px;border-radius:8px;font-weight:600;font-size:14px;cursor:pointer;font-family:inherit;">对比 (2-3 只)</button>' +
                 '<button id="buildBtn" onclick="buildPortfolio()" disabled style="flex:2;background:#F59E0B;color:#0F172A;border:none;padding:12px;border-radius:8px;font-weight:600;font-size:15px;cursor:pointer;font-family:inherit;">选择基金后构建组合</button>' +
                 '</div>';
@@ -304,8 +309,17 @@ ddSlider.addEventListener('input', function() {
     timer = setTimeout(fetchResults, 400);
 });
 
+function toggleSelectAll() {
+    var all = document.getElementById('selectAll').checked;
+    document.querySelectorAll('.fund-check').forEach(function(cb) { cb.checked = all; });
+    onCheckChange();
+}
+
 function onCheckChange() {
+    var allCbs = document.querySelectorAll('.fund-check');
     var checked = document.querySelectorAll('.fund-check:checked');
+    var selAll = document.getElementById('selectAll');
+    if (selAll) selAll.checked = (checked.length === allCbs.length);
     var buildBtn = document.getElementById('buildBtn');
     var compareBtn = document.getElementById('compareBtn');
     var hint = document.getElementById('nextStepHint');

@@ -377,6 +377,10 @@ def guide_screen():
         "ORDER BY total_score DESC",
         (min_return, max_drawdown), fetch=True)
 
+    # 过滤不可购买基金：持有期/封闭/定开/锁定/大额限购
+    BLOCKED_KEYWORDS = ['持有期', '个月持有', '年持有', '封闭', '定期开放', '锁定', '定开', '限购', '暂停申购', '滚动持有']
+    rows = [r for r in rows if not any(kw in r['fund_name'] for kw in BLOCKED_KEYWORDS)]
+
     # 份额去重：同名基金（如XXX混合A/XXX混合C）只保留评分最高的份额
     seen_base = {}
     deduped = []
@@ -386,6 +390,17 @@ def guide_screen():
             seen_base[base] = r
     deduped = sorted(seen_base.values(), key=lambda x: x['total_score'], reverse=True)
     rows = deduped
+
+    # 补充分类：fund_type 为空时根据名称推断
+    for r in rows:
+        if not r.get('fund_type'):
+            nm = r['fund_name']
+            if any(w in nm for w in ['债券', '债', '纯债', '信用债', '利率债', '转债', '可转债']): r['fund_type'] = '债券型'
+            elif any(w in nm for w in ['货币', '货基', '现金']): r['fund_type'] = '货币型'
+            elif '指数' in nm or 'ETF' in nm or 'etf' in nm: r['fund_type'] = '指数型'
+            elif '混合' in nm: r['fund_type'] = '混合型'
+            elif '股票' in nm: r['fund_type'] = '股票型'
+            else: r['fund_type'] = '混合型'
 
     # 检测过期评分（超过 7 天未更新），后台异步刷新
     stale_codes = []
@@ -432,7 +447,7 @@ def guide_screen():
         sample_count = total
         sampled = rows[:]
     else:
-        sample_count = min(10, max(5, total))
+        sample_count = min(6, max(5, total))
         top_n = max(3, int(sample_count * 0.5))
         mid_n = min(sample_count - top_n, max(1, int(sample_count * 0.35)))
         bot_n = sample_count - top_n - mid_n
@@ -492,6 +507,17 @@ def build_portfolio():
     if not rows or len(rows) < 2:
         return jsonify({'success': False, 'error': '部分基金评分数据缺失或数量不足'})
 
+    # 补充分类：fund_type 为空时根据名称推断
+    for r in rows:
+        if not r.get('fund_type'):
+            nm = r['fund_name']
+            if any(w in nm for w in ['债券', '债', '纯债', '信用债', '利率债', '转债', '可转债']): r['fund_type'] = '债券型'
+            elif any(w in nm for w in ['货币', '货基', '现金']): r['fund_type'] = '货币型'
+            elif '指数' in nm or 'ETF' in nm: r['fund_type'] = '指数型'
+            elif '混合' in nm: r['fund_type'] = '混合型'
+            elif '股票' in nm: r['fund_type'] = '股票型'
+            else: r['fund_type'] = '混合型'
+
     # Calmar 比率计算权重（年化收益-无风险利率 / 最大回撤）
     RF_RATE = 2.5
     def _calmar(annual_return, max_drawdown):
@@ -516,13 +542,13 @@ def build_portfolio():
     if avg_dd <= 12:
         equity_pct, bond_pct = 30, 70
         risk_label = '保守'
-    elif dd_param <= 18:
+    elif avg_dd <= 18:
         equity_pct, bond_pct = 50, 50
         risk_label = '稳健'
-    elif dd_param <= 25:
+    elif avg_dd <= 25:
         equity_pct, bond_pct = 65, 35
         risk_label = '平衡'
-    elif dd_param <= 32:
+    elif avg_dd <= 32:
         equity_pct, bond_pct = 80, 20
         risk_label = '成长'
     else:
