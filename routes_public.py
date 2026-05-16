@@ -115,14 +115,16 @@ def guide_onboard():
 {{
   "min_return": 数字(1-20，默认8),
   "max_drawdown": 数字(5-40，默认20),
+  "hold_period": "持有期限(<1年/1-3年/3-5年/5年以上，默认3-5年)",
   "reason": "一句话解释为什么推荐这个范围（中文，30字以内）"
 }}
 
 规则：
-- 年轻、收入高、能承受波动 → 收益偏高(10-15)、回撤放宽(20-30)
-- 中年、求稳、有家庭负担 → 收益适中(6-10)、回撤适中(15-20)
-- 退休/临近退休、保本为主 → 收益保守(3-6)、回撤保守(5-15)
-- 提到具体数字则以用户说的为准"""
+- 年轻、收入高、能承受波动 → 收益偏高(10-15)、回撤放宽(20-30)、期限偏长(3-5年或5年以上)
+- 中年、求稳、有家庭负担 → 收益适中(6-10)、回撤适中(15-20)、期限适中(1-3年或3-5年)
+- 退休/临近退休、保本为主 → 收益保守(3-6)、回撤保守(5-15)、期限偏短(<1年或1-3年)
+- 提到具体数字则以用户说的为准
+- 用户提到资金用途时间(如"3年后买房""1年后用钱""养老钱""闲钱长期") → 据此判断hold_period"""
 
         req = _ur.Request(
             'https://api.anthropic.com/v1/messages',
@@ -147,9 +149,13 @@ def guide_onboard():
             result = json.loads(m.group())
             min_ret = max(1, min(20, int(result.get('min_return', 8))))
             max_dd = max(5, min(40, int(result.get('max_drawdown', 20))))
+            hold_period = result.get('hold_period', '3-5年')
+            if hold_period not in ('<1年', '1-3年', '3-5年', '5年以上'):
+                hold_period = '3-5年'
             reason = result.get('reason', '根据你的情况推荐')
             return jsonify({'success': True, 'source': 'llm',
                           'min_return': min_ret, 'max_drawdown': max_dd,
+                          'hold_period': hold_period,
                           'reason': str(reason)[:60]})
     except Exception as e:
         print(f"[onboard] LLM failed: {e}")
@@ -167,6 +173,30 @@ def _rule_based_onboard(text: str):
     age_m = re.search(r'(\d{2})\s*岁', text)
     if age_m:
         age = int(age_m.group(1))
+
+    # 持有期限提取
+    if any(w in text_low for w in ['短期', '半年', '几个月', '1年', '一年', '快进快出', '短炒']):
+        hold_period = '<1年'
+        hp_reason = '短期资金'
+    elif any(w in text_low for w in ['1-3年', '两三年', '2-3年', '三年内', '几年内']):
+        hold_period = '1-3年'
+        hp_reason = '中短期资金'
+    elif any(w in text_low for w in ['3-5年', '5年', '五年', '三五年', '中长期']):
+        hold_period = '3-5年'
+        hp_reason = '中长期资金'
+    elif any(w in text_low for w in ['长期', '10年', '十年', '养老', '退休', '闲钱', '长期投资', '定投']):
+        hold_period = '5年以上'
+        hp_reason = '长期资金'
+    else:
+        # 按年龄推断
+        if age > 55:
+            hold_period, hp_reason = '<1年', '根据年龄推断'
+        elif age > 40:
+            hold_period, hp_reason = '1-3年', '根据年龄推断'
+        elif age > 30:
+            hold_period, hp_reason = '3-5年', '根据年龄推断'
+        else:
+            hold_period, hp_reason = '5年以上', '根据年龄推断'
 
     if any(w in text_low for w in ['退休', '养老', '保本', '不亏', '安全']):
         min_ret, max_dd, reason = 4, 12, '倾向保守：以保本和稳定增值为目标'
@@ -189,7 +219,9 @@ def _rule_based_onboard(text: str):
         max_dd = max(5, min(40, int(dd_m.group(1))))
         reason += '；已根据你说的风险承受调整回撤'
 
-    return {'min_return': min_ret, 'max_drawdown': max_dd, 'reason': reason}
+    reason += f'；持有期限{hold_period}（{hp_reason}）'
+    return {'min_return': min_ret, 'max_drawdown': max_dd,
+            'hold_period': hold_period, 'reason': reason}
 
 
 @public_bp.route('/api/guide/compare')
@@ -434,6 +466,30 @@ def guide_screen():
     deduped = sorted(seen_base.values(), key=lambda x: x['total_score'], reverse=True)
     rows = deduped
 
+    # 过滤成立不足2年的基金（不具备参考价值）
+    fund_data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fund_data')
+    _filtered_count = 0
+    _filtered_codes = set()
+    for r in rows[:]:
+        fc = r['fund_code']
+        fpath = os.path.join(fund_data_dir, f'{fc}.json')
+        if os.path.exists(fpath):
+            try:
+                with open(fpath, 'r') as _f:
+                    _data = json.load(_f)
+                _est = _data.get('成立日期', '')
+                if _est:
+                    _ed = datetime.strptime(str(_est)[:10], '%Y-%m-%d')
+                    if (datetime.now() - _ed).days < 730:
+                        rows.remove(r)
+                        _filtered_count += 1
+                        _filtered_codes.add(fc)
+                        continue
+            except Exception:
+                pass
+    if _filtered_count > 0:
+        print(f"[guide_screen] Filtered {_filtered_count} funds with <2yr history: {_filtered_codes}")
+
     # 补充分类：fund_type 为空时根据名称推断
     for r in rows:
         if not r.get('fund_type'):
@@ -543,7 +599,7 @@ def guide_screen():
 
 @public_bp.route('/api/guide/build-portfolio')
 def build_portfolio():
-    """教练向导步骤 2：根据选中基金构建组合"""
+    """教练向导步骤 2：根据选中基金构建组合（含持有期限优化）"""
     from db import db_execute
     import math
 
@@ -608,13 +664,22 @@ def build_portfolio():
         user_max_dd = 20
     user_max_dd = max(5.0, min(40.0, user_max_dd))
 
-    # ===== 动态股债配比模型 =====
-    # 参考：年龄法则（"120-年龄"）+ 风险平价 + 目标波动率（SOA 2025）
-    #
-    # Step 1: 基础权益比 = 120 - 年龄（生命周期理论）
+    # 持有期限（从请求参数获取）
+    hold_period = request.args.get('hold_period', '')
+    if hold_period not in ('<1年', '1-3年', '3-5年', '5年以上'):
+        hold_period = ''  # 未指定则自动推断
+
+    # ===== 动态股债配比模型（含持有期限调整）=====
+    # 基础权益比 = 120 - 年龄（生命周期理论）
     base_equity = max(10.0, min(90.0, 120.0 - user_age))
 
-    # Step 2: 风险调整系数（根据用户设定的最大回撤）
+    # 持有期限调整系数（期限越长，权益越高）
+    period_adjust = {'<1年': -15, '1-3年': -5, '3-5年': 5, '5年以上': 15}
+    period_bonus = period_adjust.get(hold_period, 0) if hold_period else 0
+    base_equity += period_bonus
+    base_equity = max(10.0, min(90.0, base_equity))
+
+    # 风险调整系数（根据用户设定的最大回撤）
     if user_max_dd <= 10:
         risk_mult, risk_label = 0.5, '保守'
     elif user_max_dd <= 15:
@@ -626,7 +691,7 @@ def build_portfolio():
     else:
         risk_mult, risk_label = 1.5, '进取'
 
-    # Step 3: 最终权益比 = 基础 × 风险系数，限制 10%-90%
+    # 最终权益比 = 基础 × 风险系数，限制 10%-90%
     equity_pct_float = base_equity * risk_mult
     equity_pct = max(10.0, min(90.0, equity_pct_float))
     bond_pct = round(100.0 - equity_pct)
@@ -636,7 +701,6 @@ def build_portfolio():
     if equity_pct + bond_pct != 100:
         equity_pct = 100 - bond_pct
 
-    # 如果只有一类基金，调整配比
     if not bond_funds:
         bond_pct = 0
         equity_pct = 100
@@ -645,15 +709,19 @@ def build_portfolio():
         bond_pct = 100
 
     # 股债配比解释
+    period_desc = {'<1年': '短期持有（<1年）', '1-3年': '中短期持有（1-3年）',
+                   '3-5年': '中长期持有（3-5年）', '5年以上': '长期持有（5年以上）'}
+    period_text = period_desc.get(hold_period, '未指定期限') if hold_period else '未指定期限（按年龄推断）'
     explanation_lines = [
-        f'【{risk_label}型配置】基于"120-年龄"生命周期法则（120-{user_age}={base_equity:.0f}%基础权益）'
-        f'× 风险调整系数 {risk_mult}（最大回撤≤{user_max_dd:.0f}%）'
+        f'【{risk_label}型配置 | {period_text}】基于"120-年龄"生命周期法则（120-{user_age}={base_equity - period_bonus:.0f}%基础权益）'
+        + (f' + 持有期限调整({period_bonus:+.0f}%)' if period_bonus else '')
+        + f' × 风险调整系数 {risk_mult}（最大回撤≤{user_max_dd:.0f}%）'
         f'→ 最终配比 {equity_pct}% 权益 + {bond_pct}% 固收。',
         f'理论基础：年龄越大权益越低（退休后更需要稳定现金流），'
-        f'能承受的回撤越小固收占比越高（参考桥水全天候策略与 SOA 2025 目标波动率模型）。',
+        f'能承受的回撤越小固收占比越高，持有期限越长权益仓位越重（时间消化波动）。',
     ]
 
-    # Calmar 加权分配（权重取整到 5 的倍数，方便操作）
+    # Calmar 加权分配（权重取整到 5 的倍数）
     funds = []
     layers = {}
 
@@ -691,7 +759,6 @@ def build_portfolio():
             })
         layers[layer_name] = layer_funds
 
-    # 权益部分：核心+卫星
     if equity_funds and equity_pct > 0:
         eq_sorted = sorted(equity_funds, key=lambda x: _calmar(x['annual_return'], x['max_drawdown']), reverse=True)
         if len(eq_sorted) >= 2:
@@ -710,7 +777,6 @@ def build_portfolio():
             _allocate(eq_sorted, equity_pct, '权益')
             explanation_lines.append(f'【权益部分 {equity_pct}%】配置高分基金，获取市场长期增长收益。')
 
-    # 固收部分
     if bond_funds and bond_pct > 0:
         bd_sorted = sorted(bond_funds, key=lambda x: _calmar(x['annual_return'], x['max_drawdown']), reverse=True)
         _allocate(bd_sorted, bond_pct, '固收')
@@ -721,10 +787,8 @@ def build_portfolio():
     # 权重约束：确保和为 100，每只取 5 的倍数
     total_w = sum(f['weight'] for f in funds)
     if total_w > 0 and total_w != 100:
-        # 按比例缩放后取整到 5
         for f in funds:
             f['weight'] = _round_to_5(f['weight'] / total_w * 100)
-    # 最终补齐差值（分配余数到权重最大的基金）
     final_total = sum(f['weight'] for f in funds)
     if final_total != 100 and funds:
         funds.sort(key=lambda x: x['weight'], reverse=True)
@@ -737,21 +801,45 @@ def build_portfolio():
 
     explanation_lines.append(
         f'【权重方法】采用 Calmar 比率（(年化收益-无风险利率)/最大回撤）分配各基金权重，'
-        f'单只基金占比控制在 5%-40%，同类基金合计不超过 50%。权重不平均分配——回撤低的基金权重更高，'
-        f'体现了"同等收益下优先选择更稳定的基金"的原则。'
+        f'单只基金占比控制在 5%-40%，同类基金合计不超过 50%。回撤低的基金权重更高。'
     )
 
-    # 买入策略推荐（根据组合最大回撤）
+    # 买入策略推荐（结合持有期限）
     if portfolio_dd < 8:
         strategy = '一次性买入'
-        strategy_detail = '组合波动低（回撤<8%），一次性全额买入可最大化资金利用效率，无需择时。建议在近期净值回调日买入。'
+        strategy_detail = '组合波动低（回撤<8%），一次性全额买入可最大化资金利用效率，无需择时。'
     elif portfolio_dd < 18:
         strategy = '分批买入'
         batches = 3 if portfolio_dd < 13 else 4
-        strategy_detail = f'组合波动适中（回撤{portfolio_dd:.0f}%），建议分{batches}批买入，每批间隔1-2周。例如总资金{batches*5}万，每批{(batches*5)//batches}万。避免一次性买在高点。'
+        strategy_detail = f'组合波动适中（回撤{portfolio_dd:.0f}%），建议分{batches}批买入，每批间隔1-2周，避免一次性买在高点。'
     else:
         strategy = '定投买入'
-        strategy_detail = f'组合波动较大（回撤{portfolio_dd:.0f}%），建议采用定投策略。每月固定金额买入，坚持12个月以上，利用波动摊平成本。熊市多买份额，牛市享受收益。'
+        strategy_detail = f'组合波动较大（回撤{portfolio_dd:.0f}%），建议采用定投策略。每月固定金额买入，坚持12个月以上，摊平成本。'
+
+    # 持有期限建议
+    if equity_pct <= 20:
+        suggested_hold = '6个月以上'
+        hold_tip = '组合以固收为主，短期持有即可获得稳定收益'
+    elif equity_pct <= 40:
+        suggested_hold = '1年以上'
+        hold_tip = '组合偏稳健，建议持有1年以上以获取较好的风险调整后收益'
+    elif equity_pct <= 60:
+        suggested_hold = '2-3年'
+        hold_tip = '组合股债平衡，建议持有2-3年以穿越一轮完整的市场周期'
+    elif equity_pct <= 80:
+        suggested_hold = '3-5年'
+        hold_tip = '组合偏权益，建议持有3-5年以充分享受企业盈利增长的复利效应'
+    else:
+        suggested_hold = '5年以上'
+        hold_tip = '组合高权益仓位，短期波动较大，建议长期持有以平滑市场波动'
+
+    # 如果用户指定了期限，确保建议不低于用户预期
+    if hold_period:
+        period_rank = {'<1年': 0, '1-3年': 1, '3-5年': 2, '5年以上': 3}
+        suggest_rank = {'6个月以上': 0, '1年以上': 1, '2-3年': 2, '3-5年': 3, '5年以上': 4}
+        min_rank = period_rank.get(hold_period, 0)
+        if suggest_rank.get(suggested_hold, 2) < min_rank:
+            suggested_hold = {0: '6个月以上', 1: '1年以上', 2: '2-3年', 3: '3-5年'}.get(min_rank, '3-5年')
 
     return jsonify({
         'success': True,
@@ -763,5 +851,8 @@ def build_portfolio():
         },
         'explanation': '\n'.join(explanation_lines),
         'risk_level': risk_label,
+        'hold_period': hold_period or suggested_hold,
+        'suggested_hold_period': suggested_hold,
+        'hold_tip': hold_tip,
         'strategy': {'name': strategy, 'detail': strategy_detail},
     })

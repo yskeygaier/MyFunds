@@ -6,6 +6,7 @@
 <meta property="og:title" content="基金投资教练 — 4P三性选基">
 <meta property="og:description" content="设定收益和风险目标，获取个性化基金组合推荐。基于好买基金4P三性方法论。">
 <meta property="og:type" content="website">
+<link rel="icon" type="image/x-icon" href="/static/favicon.ico">
 <title>基金投资教练</title>
 <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
 <style>
@@ -85,6 +86,10 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;heigh
 .period-btn{font-size:11px;background:rgba(148,163,184,0.08);color:#94A3B8;border:1px solid rgba(148,163,184,0.12);border-radius:4px;padding:4px 8px;cursor:pointer;font-family:inherit}
 .period-btn:hover{color:#F8FAFC;border-color:rgba(148,163,184,0.3)}
 .period-btn.active{background:rgba(245,158,11,0.15);color:#F59E0B;border-color:rgba(245,158,11,0.3)}
+
+.period-opt{font-size:13px;background:rgba(148,163,184,0.06);color:#94A3B8;border:1px solid rgba(148,163,184,0.15);border-radius:6px;padding:6px 12px;cursor:pointer;font-family:inherit;flex:1;text-align:center;transition:all 0.15s}
+.period-opt:hover{color:#F8FAFC;border-color:rgba(148,163,184,0.3);background:rgba(148,163,184,0.12)}
+.period-opt.active{background:rgba(245,158,11,0.15);color:#F59E0B;border-color:rgba(245,158,11,0.35);font-weight:600}
 </style>
 </head>
 <body>
@@ -127,6 +132,19 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;heigh
             <input type="range" id="ddSlider" min="5" max="40" value="20" step="1" aria-label="最大可承受回撤，范围 5% 到 40%">
             <div style="display:flex;justify-content:space-between;font-size:11px;color:#64748B">
                 <span>5% (几乎不亏)</span><span>40% (能扛大波动)</span>
+            </div>
+        </div>
+
+        <div class="slider-group">
+            <div class="slider-label"><span>计划持有期限</span><span class="slider-value" id="hpVal">3-5年</span></div>
+            <div style="display:flex;gap:8px;margin-top:4px;">
+                <button class="period-opt" data-period="<1年" onclick="selectPeriod('<1年', this)">＜1年</button>
+                <button class="period-opt" data-period="1-3年" onclick="selectPeriod('1-3年', this)">1-3年</button>
+                <button class="period-opt active" data-period="3-5年" onclick="selectPeriod('3-5年', this)">3-5年</button>
+                <button class="period-opt" data-period="5年以上" onclick="selectPeriod('5年以上', this)">5年+</button>
+            </div>
+            <div style="font-size:11px;color:#64748B;margin-top:4px;">
+                <span>持有越久，权益仓位越高，复利效应越明显</span>
             </div>
         </div>
 
@@ -180,6 +198,15 @@ function esc(s) {
 }
 
 var _onboardDone = false;
+var _holdPeriod = '3-5年';
+
+function selectPeriod(period, el) {
+    _holdPeriod = period;
+    document.getElementById('hpVal').textContent = period;
+    document.querySelectorAll('.period-opt').forEach(function(b) { b.classList.remove('active'); });
+    el.classList.add('active');
+}
+
 function skipOnboard() {
     _onboardDone = true;
     document.getElementById('onboardCard').style.display = 'none';
@@ -212,6 +239,13 @@ function doOnboard() {
             _onboardDone = true;
             retSlider.value = d.min_return;
             ddSlider.value = d.max_drawdown;
+            if (d.hold_period) {
+                _holdPeriod = d.hold_period;
+                document.getElementById('hpVal').textContent = d.hold_period;
+                document.querySelectorAll('.period-opt').forEach(function(b) { b.classList.remove('active'); });
+                var hpBtn = document.querySelector('.period-opt[data-period="' + d.hold_period + '"]');
+                if (hpBtn) hpBtn.classList.add('active');
+            }
             updateLabels();
             document.getElementById('onboardReason').textContent = d.reason;
             document.getElementById('onboardReason').style.display = '';
@@ -438,7 +472,7 @@ function buildPortfolio() {
     sec.classList.add('active');
     sec.scrollIntoView({behavior:'smooth'});
 
-    fetch('/api/guide/build-portfolio?codes=' + codes.join(','))
+    fetch('/api/guide/build-portfolio?codes=' + codes.join(',') + '&hold_period=' + encodeURIComponent(_holdPeriod))
         .then(function(r) { return r.json(); })
         .then(function(d) {
             if (!d.success) {
@@ -495,6 +529,11 @@ function buildPortfolio() {
             }
             if (d.risk_level) {
                 html += '<div style="font-size:12px;color:#64748B;margin-top:4px;">风险等级: <span style="color:#F59E0B;">' + esc(d.risk_level) + '</span></div>';
+            }
+            if (d.suggested_hold_period) {
+                html += '<div style="background:rgba(16,185,129,0.05);border:1px solid rgba(16,185,129,0.12);border-radius:8px;padding:12px;margin-top:8px;font-size:13px;color:#94A3B8;line-height:1.6;">' +
+                    '<div style="font-weight:600;color:#10B981;margin-bottom:2px;">⏳ 建议持有期限：' + esc(d.suggested_hold_period) + '</div>' +
+                    esc(d.hold_tip || '') + '</div>';
             }
             html += '<div class="export-area" id="exportText">' + exportText.replace(/\n/g, '<br>') + '</div>' +
                 '<button class="copy-btn" onclick="copyExport()">复制到剪贴板</button>' +

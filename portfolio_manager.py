@@ -114,6 +114,30 @@ ASSET_ALLOCATION = {
     '激进型': {'股票型': 50, '指数型': 25, '混合型': 15, '债券型': 5, '货币型': 5},
 }
 
+# 持有期限驱动的资产配置（期限越长，权益占比越高）
+HOLD_PERIOD_ALLOCATION = {
+    '<1年':   {'货币型': 30, '债券型': 45, '混合型': 20, '股票型': 5},
+    '1-3年':  {'债券型': 35, '混合型': 30, '股票型': 20, '指数型': 10, '货币型': 5},
+    '3-5年':  {'混合型': 35, '股票型': 25, '债券型': 20, '指数型': 15, '货币型': 5},
+    '5年以上': {'股票型': 35, '指数型': 25, '混合型': 30, '债券型': 10},
+}
+
+# 持有期限对应的回撤目标（期限越短，回撤容忍越低）
+HOLD_PERIOD_DD_TARGET = {
+    '<1年':   5.0,
+    '1-3年': 10.0,
+    '3-5年': 18.0,
+    '5年以上': 28.0,
+}
+
+# 持有期限对应的核心投资理念
+HOLD_PERIOD_CORE_IDEA = {
+    '<1年':   '短期持有以安全性和流动性为首要目标，高比例配置货币和短债基金，严格控制回撤，确保本金安全。组合追求稳定绝对收益，力争跑赢通胀和银行理财。',
+    '1-3年':  '中短期配置，债券打底提供稳定票息，混合基金捕捉股债轮动机会。在控制回撤的前提下适度增强收益，适合有一笔资金计划2-3年后使用的投资者。',
+    '3-5年':  '中长期股债平衡配置，兼顾进攻与防守。通过资产多元化分散风险，利用不同资产类别的低相关性平滑净值曲线，充分享受企业盈利增长带来的复利效应。',
+    '5年以上': '长期权益为主配置，时间是最好的朋友。高仓位持有优质股票和指数基金，穿越牛熊周期获取企业长期成长回报。短期波动是长期收益的必要代价。',
+}
+
 # 文艺名称库
 PORTFOLIO_NAMES = {
     '保守型': {
@@ -1012,6 +1036,18 @@ def _build_fund_pool(force_refresh=False):
                 except Exception:
                     pass
                 pool[fc]['manager'] = data.get('基金经理', '') or ''
+                # 过滤成立不足2年的基金
+                est_date_str = data.get('成立日期', '')
+                if est_date_str:
+                    try:
+                        from datetime import datetime as _dt
+                        est_date = _dt.strptime(str(est_date_str)[:10], '%Y-%m-%d')
+                        if (_dt.now() - est_date).days < 730:
+                            if fc in pool:
+                                del pool[fc]
+                            continue
+                    except Exception:
+                        pass
                 pool[fc]['source'] = '本地'
             except Exception:
                 continue
@@ -1019,7 +1055,7 @@ def _build_fund_pool(force_refresh=False):
         pass
     _FUND_POOL_CACHE = pool
     _FUND_POOL_CACHE_TIME = _t.time()
-    print(f"[portfolio] Fund pool built: {len(pool)} funds")
+    print(f"[portfolio] Fund pool built: {len(pool)} funds (filtered <2yr funds)")
     return pool.copy()
 
 
@@ -1126,7 +1162,14 @@ def _pick_funds_for_type(pool, target_type, target_pct, used_codes, risk_level='
     remaining = target_pct
     if not candidates:
         return selected, remaining
-    top = candidates[:max_funds]
+    # 从最高分区间随机选取（按种类取评分最高的，随机增加多样性）
+    max_score = candidates[0][0]
+    bracket = [(s, f) for s, f in candidates if s >= max_score * 0.85]
+    if len(bracket) > max_funds:
+        top = random.sample(bracket, max_funds)
+        top.sort(key=lambda x: x[0], reverse=True)
+    else:
+        top = bracket[:max_funds]
     if not top:
         return selected, remaining
     per_fund = min(target_pct / len(top), max_per_fund)
@@ -1577,15 +1620,16 @@ def get_suggested_funds(risk_type=None):
 # 组合推荐
 # ══════════════════════════════════════════════════════════════
 
-def generate_recommendation(risk_level='平衡型'):
-    """根据风险等级，从全市场基金池中按资产配置比例生成推荐组合"""
+def generate_recommendation(risk_level='平衡型', hold_period=None):
+    """根据风险等级和持有期限，从全市场基金池中按资产配置比例生成推荐组合"""
     try:
-        return _generate_recommendation_impl(risk_level)
+        return _generate_recommendation_impl(risk_level, hold_period)
     except Exception as e:
         import traceback
         traceback.print_exc()
         return {
             'risk_level': risk_level,
+            'hold_period': hold_period,
             'core_idea': '推荐生成失败，请稍后重试',
             'asset_allocation': ASSET_ALLOCATION.get(risk_level, {}),
             'funds': [],
@@ -1637,9 +1681,34 @@ def _estimate_portfolio_drawdown(funds):
     return round(portfolio_dd, 1)
 
 
-def _generate_recommendation_impl(risk_level):
-    """推荐引擎实现"""
-    allocation = ASSET_ALLOCATION.get(risk_level, ASSET_ALLOCATION['平衡型'])
+def _generate_recommendation_impl(risk_level, hold_period=None):
+    """推荐引擎实现：基于风险等级+持有期限双重优化"""
+    # ── 持有期限驱动的资产配置 ──
+    if hold_period and hold_period in HOLD_PERIOD_ALLOCATION:
+        period_alloc = HOLD_PERIOD_ALLOCATION[hold_period]
+        period_dd_target = HOLD_PERIOD_DD_TARGET[hold_period]
+        period_core = HOLD_PERIOD_CORE_IDEA[hold_period]
+    else:
+        # 未指定持有期限时，从风险等级推断
+        inferred = _infer_period_from_risk(risk_level)
+        period_alloc = HOLD_PERIOD_ALLOCATION[inferred]
+        period_dd_target = HOLD_PERIOD_DD_TARGET[inferred]
+        period_core = HOLD_PERIOD_CORE_IDEA[inferred]
+        hold_period = inferred
+
+    # 混合分配：期限配置为主(60%)，风险配置为辅(40%)
+    risk_alloc = ASSET_ALLOCATION.get(risk_level, ASSET_ALLOCATION['平衡型'])
+    allocation = {}
+    all_types = set(list(period_alloc.keys()) + list(risk_alloc.keys()))
+    for ftype in all_types:
+        p_w = period_alloc.get(ftype, 0)
+        r_w = risk_alloc.get(ftype, 0)
+        allocation[ftype] = round(p_w * 0.6 + r_w * 0.4, 1)
+
+    # 取期限回撤目标和风险回撤目标中较严格的那个
+    risk_dd_target = PORTFOLIO_DD_TARGET.get(risk_level, 15.0)
+    target_dd = min(period_dd_target, risk_dd_target)
+
     pool = _build_fund_pool()
     selected_funds = []
     used_codes = set()
@@ -1650,7 +1719,6 @@ def _generate_recommendation_impl(risk_level):
         if target_pct <= 0 or remaining_total <= 0.5:
             continue
         effective_target = min(target_pct, remaining_total)
-        # 根据权重决定选几只（保证总数5-8只）
         if effective_target >= 40:
             max_per_type = 2
         elif effective_target >= 20:
@@ -1668,9 +1736,7 @@ def _generate_recommendation_impl(risk_level):
         bond_candidates = [(fc, f) for fc, f in pool.items()
                           if f.get('type') == '债券型' and fc not in used_codes
                           and not ((f.get('max_drawdown', 0) or 0) < 0 and (f.get('max_drawdown', 0) or 0) < max_dd)]
-        # 评分排序
         bond_candidates.sort(key=lambda x: _score_fund_for_type(x[1], '债券型'), reverse=True)
-        # 同基金不同份额去重
         bond_candidates = _dedup_share_classes(bond_candidates)
         for fc, f in bond_candidates[:2]:
             if remaining_total <= 2:
@@ -1687,43 +1753,36 @@ def _generate_recommendation_impl(risk_level):
             })
             remaining_total -= w
             used_codes.add(fc)
-    # ── 组合整体回撤优化 ──────────────────────────────────────
-    target_dd = PORTFOLIO_DD_TARGET.get(risk_level, 12.0)
-    for _ in range(8):  # 最多8轮迭代
+    # ── 组合整体回撤优化（以较严格的期限回撤目标为准）──
+    for _ in range(8):
         est_dd = _estimate_portfolio_drawdown(selected_funds)
         if est_dd <= target_dd + 0.3:
-            break  # 达标
-        # 按回撤贡献度排序(权重×|回撤|)
+            break
         sorted_by_risk = sorted(selected_funds,
             key=lambda f: (f.get('max_drawdown', 0) or _asset_typical_dd(f['fund_type'])) * f['weight'],
             reverse=True)
         sorted_by_safety = sorted(selected_funds,
             key=lambda f: (f.get('max_drawdown', 0) or _asset_typical_dd(f['fund_type'])) * f['weight'])
-        # 计算需要降低的回撤量
         excess = est_dd - target_dd
         if excess <= 0:
             break
-        # 从最risky向最safe转移：转移量 = min(超出量, risky可转量, safe可增量)
         risky_fund = sorted_by_risk[0]
         safe_fund = sorted_by_safety[0]
         if risky_fund == safe_fund:
-            break  # 已经是同一只
+            break
         risky_dd = abs(risky_fund.get('max_drawdown', 0) or _asset_typical_dd(risky_fund['fund_type']))
         safe_dd = abs(safe_fund.get('max_drawdown', 0) or _asset_typical_dd(safe_fund['fund_type']))
-        # 每转移1%权重减少的回撤 ≈ (risky_dd - safe_dd) / 总权重 / 100
-        dd_diff_per_pct = (risky_dd - safe_dd) * 0.7 / 100  # 0.7是分散化折扣
+        dd_diff_per_pct = (risky_dd - safe_dd) * 0.7 / 100
         if dd_diff_per_pct <= 0:
             break
         shift = min(excess / dd_diff_per_pct, risky_fund['weight'] - 5.0, 20.0 - safe_fund['weight'])
         if shift < 0.5:
-            # 转移量太小，尝试增加债券型基金
             bond_funds_in_pool = [fc for fc, f in pool.items()
                                  if f.get('type') == '债券型' and fc not in used_codes
                                  and not ((f.get('max_drawdown', 0) or 0) < 0 and (f.get('max_drawdown', 0) or 0) < -10)]
             if bond_funds_in_pool:
                 for fc in bond_funds_in_pool[:1]:
                     f = pool[fc]
-                    # 减少最risky的权重，增加债券
                     reduce = min(risky_fund['weight'] - 5.0, 10.0)
                     if reduce > 1:
                         risky_fund['weight'] -= reduce
@@ -1742,7 +1801,7 @@ def _generate_recommendation_impl(risk_level):
         safe_fund['weight'] = round(safe_fund['weight'] + shift, 1)
 
     # 最终归一化到100%，同时限制单只≤20%
-    for _ in range(3):  # 迭代校正
+    for _ in range(3):
         total_w = sum(f['weight'] for f in selected_funds)
         if total_w <= 0:
             break
@@ -1754,7 +1813,6 @@ def _generate_recommendation_impl(risk_level):
                 f['weight'] = 20.0
         if overages < 0.5:
             break
-        # 重新分配超出部分
         under_20 = [f for f in selected_funds if f['weight'] < 20]
         if under_20 and overages > 0:
             add_each = overages / len(under_20)
@@ -1764,38 +1822,65 @@ def _generate_recommendation_impl(risk_level):
     if total_w > 0:
         for f in selected_funds:
             f['weight'] = round(f['weight'] / total_w * 100, 1)
-    core_ideas = {
-        '保守型': '以本金安全为首要目标，高比例配置债券和货币基金，严格控制回撤，追求稳定增值。基于现代资产组合理论(MPT)，通过低相关性资产的组合最大化风险调整后收益。',
-        '稳健型': '稳健为主、适度进取。债券为底仓提供稳定收益，优质混合基金增强回报。在控制最大回撤的前提下，追求超越通胀的长期回报。',
-        '平衡型': '股债平衡配置，兼顾进攻与防守。通过资产多元化分散风险，利用不同资产类别的低相关性平滑净值曲线，适应牛熊切换的市场环境。',
-        '成长型': '以成长为核心驱动，侧重股票型和指数型基金。通过长期持有优质权益资产获取企业盈利增长带来的超额回报，接受过程中正常的市场波动。',
-        '激进型': '高仓位权益配置，积极进取追求高收益。投资于高成长性赛道和优秀基金经理管理的产品，在充分认知风险的前提下，争取最大化长期复利回报。',
-    }
+
+    # ── 动态持有期建议（基于组合实际指标）──
     est_dd = _estimate_portfolio_drawdown(selected_funds)
-    target_dd = PORTFOLIO_DD_TARGET.get(risk_level, 12.0)
+    equity_pct = sum(f['weight'] for f in selected_funds if f['fund_type'] in ('股票型', '混合型', '指数型'))
+    avg_sharpe = sum(f.get('sharpe', 0) or 0 for f in selected_funds) / max(len(selected_funds), 1)
+
+    if est_dd <= 3 and equity_pct < 20:
+        calc_period = '3个月以上'
+    elif est_dd <= 8 and equity_pct < 40:
+        calc_period = '6个月以上'
+    elif est_dd <= 15 and equity_pct < 60:
+        calc_period = '1-2年'
+    elif est_dd <= 25 and equity_pct < 80:
+        calc_period = '2-3年'
+    else:
+        calc_period = '3-5年'
+
+    # 如果用户指定了持有期限，确保建议不低于期限要求
+    period_order = ['3个月以上', '6个月以上', '1-2年', '2-3年', '3-5年']
+    if hold_period in ('<1年', '1-3年', '3-5年', '5年以上'):
+        min_idx = {'<1年': 0, '1-3年': 2, '3-5年': 3, '5年以上': 4}.get(hold_period, 0)
+        calc_idx = period_order.index(calc_period) if calc_period in period_order else 2
+        if calc_idx < min_idx:
+            calc_period = period_order[min_idx]
+        # 如果实际组合更保守，建议期限可以缩短
+        if calc_idx > min_idx + 1 and est_dd < target_dd * 0.6:
+            calc_period = period_order[min_idx]
+
     return {
         'risk_level': risk_level,
-        'core_idea': core_ideas.get(risk_level, core_ideas['平衡型']),
-        'asset_allocation': allocation,
+        'hold_period': hold_period,
+        'core_idea': period_core,
+        'asset_allocation': {k: v for k, v in sorted(allocation.items(), key=lambda x: x[1], reverse=True)},
         'funds': selected_funds,
         'fund_count': len(selected_funds),
         'total_weight': round(sum(f['weight'] for f in selected_funds), 1),
         'estimated_drawdown': est_dd,
         'target_drawdown': target_dd,
         'drawdown_ok': est_dd <= target_dd,
-        'suggested_hold_period': {
-            '保守型': '6个月以上', '稳健型': '1年以上', '平衡型': '2年以上',
-            '成长型': '3年以上', '激进型': '5年以上',
-        }.get(risk_level, '1年以上'),
-        'methodology': f'基于好买基金4P三性法筛选 + 分散化优化。组合预估最大回撤{est_dd}%（目标≤{target_dd}%），通过{len(set(f.get("fund_type","") for f in selected_funds))}类资产分散配置降低非系统性风险。单只基金权重不超过20%。',
+        'equity_pct': round(equity_pct, 1),
+        'avg_sharpe': round(avg_sharpe, 2),
+        'suggested_hold_period': calc_period,
+        'methodology': f'基于好买基金4P三性法筛选 + 持有期限匹配优化。组合预估最大回撤{est_dd}%（目标≤{target_dd}%），通过{len(set(f.get("fund_type","") for f in selected_funds))}类资产分散配置降低非系统性风险。权益仓位{equity_pct}%，适合{calc_period}持有。',
         'risk_warnings': [
             f'组合预估最大回撤{est_dd}%（目标≤{target_dd}%），{"回撤可控" if est_dd <= target_dd else "注意回撤略超目标"}',
+            f'建议持有期限{calc_period}，持有时间越短，亏损概率越高',
             '投资有风险，过往业绩不预示未来表现，投资者需自行承担投资决策的风险',
             '市场剧烈波动时可能出现阶段性亏损，请根据自身风险承受能力合理配置',
             '建议定期（每季度）审视组合表现，根据市场变化和自身情况适时调整',
             '本推荐基于历史数据和量化模型，不构成投资建议，仅供参考',
         ],
     }
+
+
+def _infer_period_from_risk(risk_level):
+    """从风险等级推断合理的持有期限"""
+    mapping = {'保守型': '<1年', '稳健型': '1-3年', '平衡型': '3-5年',
+               '成长型': '3-5年', '激进型': '5年以上'}
+    return mapping.get(risk_level, '3-5年')
 
 
 # ══════════════════════════════════════════════════════════════
@@ -2337,7 +2422,8 @@ def register_routes(app):
     @app.route('/api/portfolio/recommend')
     def portfolio_recommend():
         risk_level = request.args.get('risk_level', '平衡型')
-        return jsonify({'success': True, 'data': generate_recommendation(risk_level)})
+        hold_period = request.args.get('hold_period', None)
+        return jsonify({'success': True, 'data': generate_recommendation(risk_level, hold_period)})
 
     @app.route('/api/portfolio/recommend/create', methods=['POST'])
     def portfolio_recommend_create():

@@ -249,6 +249,9 @@ if __name__ == '__main__':
         from routes_public import public_bp
         app.register_blueprint(public_bp)
         # 教练向导页面
+        @app.route('/favicon.ico')
+        def favicon():
+            return app.send_static_file('favicon.ico')
         @app.route('/guide')
         def guide_page():
             return render_template('guide.html')

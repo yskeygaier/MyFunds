@@ -201,7 +201,7 @@ def _build_dca_chart(result, fund_code):
             borderpad=6, bordercolor='rgba(148, 163, 184, 0.3)'
         )]
     )
-    return fig.to_html(full_html=False, include_plotlyjs='cdn')
+    return fig.to_html(full_html=False, include_plotlyjs=False)
 
 
 @backtest_bp.route('/api/fund/backtest', methods=['GET'])
@@ -336,7 +336,7 @@ def get_fund_backtest():
             ]
         )
 
-        chart_html = fig.to_html(full_html=False, include_plotlyjs='cdn')
+        chart_html = fig.to_html(full_html=False, include_plotlyjs=False)
 
         return jsonify({
             'success': True,
