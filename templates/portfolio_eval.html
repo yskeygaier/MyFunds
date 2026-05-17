@@ -380,7 +380,7 @@ function showExtractedList(){
       '<div><input type="number" value="'+h.weight+'" min="1" max="100" style="width:70px;background:rgba(15,23,42,0.8);border:1px solid rgba(148,163,184,0.2);border-radius:6px;color:#F8FAFC;padding:8px;text-align:right;font-weight:700;color:#F59E0B" onchange="updateWeight('+idx+',this.value)">%</div></div></div>';
   });container.innerHTML=html;
 }
-function updateWeight(idx,val){_confirmedHoldings[idx].weight=parseFloat(val)||0;_confirmedHoldings=normalizeWeights(_confirmedHoldings);showExtractedList();}
+function updateWeight(idx,val){_confirmedHoldings[idx].weight=parseFloat(val)||0;showExtractedList();}
 function resetToUpload(){document.getElementById('extractedCard').style.display='none';document.getElementById('uploadCard').style.display='';clearImage();document.getElementById('resultsArea').style.display='none';}
 
 // Analysis
@@ -389,7 +389,7 @@ function analyzePortfolio(){
   if(!holdings.length){alert('请至少输入一只基金');return;}
   var total=holdings.reduce(function(s,h){return s+(h.weight||0);},0);
   if(Math.abs(total-100)>1){alert('各基金占比总和应为100%，当前合计'+total.toFixed(0)+'%。请调整后再提交');return;}
-  holdings=normalizeWeights(holdings);_confirmedHoldings=holdings;
+  _confirmedHoldings=holdings;
   showLoading('正在分析组合...','获取基金数据和计算指标，请稍候');
   document.getElementById('resultsArea').style.display='';
   document.getElementById('extractedCard').style.display='none';document.getElementById('uploadCard').style.display='none';
