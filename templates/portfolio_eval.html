@@ -413,7 +413,7 @@ function renderHealthScore(d){
     '<circle class="gauge-fill" cx="60" cy="60" r="35" stroke="'+color+'" stroke-dasharray="'+circ+'" stroke-dashoffset="'+offset+'"/>'+
     '</svg><div class="gauge-text"><div class="gauge-num" style="color:'+color+'">'+s+'</div><div class="gauge-label">/100</div></div></div>'+
     '<div class="gauge-info"><div>评分等级：<strong class="grade" style="color:'+color+'">'+grade+'</strong></div>'+
-    '<div>组合类型：<strong>'+(d.portfolio_type||'--')+'</strong></div>
+    '<div>组合类型：<strong>'+(d.portfolio_type||'--')+'</strong></div>'+
     '<div>基金数量：<strong>'+d.metrics.fund_count+'</strong> 只</div>'+
     '<div>风险等级：<strong>'+esc(r.level||'--')+'</strong></div>'+
     (d.warning?'<div style="color:#F87171;margin-top:4px;font-size:12px">⚠ '+esc(d.warning)+'</div>':'')+
