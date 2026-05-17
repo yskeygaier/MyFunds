@@ -321,7 +321,7 @@ def _analyze_portfolio_style(fund_info_list):
     style_counts = {}
     total_weight = sum(h['weight'] for h in fund_info_list)
     for h in fund_info_list:
-        style = h.get('info', {}).get('基金风格', '未知') or '未知'
+        style = h.get('info', {}).get('基金风格', '(未分类)') or '(未分类)'
         w = h['weight'] / total_weight if total_weight > 0 else 1/len(fund_info_list)
         style_counts[style] = style_counts.get(style, 0) + w
     dominant = max(style_counts, key=style_counts.get) if style_counts else '平衡'
@@ -426,7 +426,7 @@ def _generate_portfolio_recommendations(fund_info_list, metrics, style, sectors,
     if not style.get('is_diversified', False) and fc >= 3:
         dom = style.get('dominant', '')
         recommendations.append({'type':'style','priority':'medium','title':'平衡风格配置',
-            'content':f'组合风格偏于「{dom}」，建议增加不同风格基金。',
+            'content':f'组合风格偏于「{dom}」' if dom != '(未分类)' else '组合风格数据缺失，建议增加不同风格基金以分散风险。',
             'action':'balance_style','impact':'提高不同市场环境下的适应性'})
 
     if not recommendations:
@@ -841,7 +841,11 @@ class PortfolioClinic:
         lines.append(f'• 回撤：从-{orig_dd}%降至约-{exp_dd}%')
         lines.append(f'• 收益：年化从{orig_ret}%调整至约{exp_ret}%')
         if sr < 0.5 and has_add_bond:
-            lines.append(f'• 夏普比率有望从{sr}提升至0.5以上，风险收益比改善。')
-        lines.append(f'• 调整后健康分预计从{report.health_score}提升至70分以上。')
+            lines.append('夏普比率有望从' + str(sr) + '提升至0.5以上，风险收益比改善。')
+        target_score = max(report.health_score + 15, 70)
+        if target_score > report.health_score:
+            lines.append('调整后健康分预计从' + str(report.health_score) + '提升至' + str(target_score) + '分左右。')
+        else:
+            lines.append('当前健康分' + str(report.health_score) + '，保持现有配置预计维持该水平。')
 
         return '\n'.join(lines)
