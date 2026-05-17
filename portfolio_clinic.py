@@ -723,27 +723,38 @@ class PortfolioClinic:
 
     @staticmethod
     def generate_llm_summary(report: ClinicReport) -> str:
-        """生成LLM诊断摘要（独立步骤，异步加载）"""
+        """生成LLM诊断摘要（独立步骤，异步加载）
+        包含具体持仓数据和可落地的调整方案（含具体基金代码和比例）"""
         if not DOUBAO_API_KEY or not DOUBAO_MODEL:
             return ''
 
         metrics = report.metrics
-        recs = report.recommendations.get('list', [])
+
+        # 构建持仓明细表
+        holding_lines = []
+        for h in report.holdings:
+            info = h.get('info', {})
+            code = h.get('fund_code', '')
+            name = info.get('基金简称', h.get('fund_name', code))
+            weight = h.get('weight', 0)
+            ar = info.get('年化收益率', '--')
+            md = info.get('最大回撤', '--')
+            sharpe = info.get('夏普比率', '--')
+            style = info.get('基金风格', '--')
+            sector = info.get('第一大行业', '--')
+            holding_lines.append(
+                f"  {code} {name} 权重{weight}% 年化{ar} 回撤{md} 夏普{sharpe} 风格{style} 行业{sector}"
+            )
+
+        holdings_text = '\n'.join(holding_lines)
 
         prompt = (
-            f"你是一个基金分析助手。请根据以下组合数据，用三段式写一份中文诊断摘要（每段2-3句话）：\n\n"
-            f"组合健康分：{report.health_score}/100\n"
-            f"年化收益：{metrics.annual_return if metrics else 'N/A'}%\n"
-            f"最大回撤：{metrics.conservative_max_drawdown if metrics else 'N/A'}%\n"
-            f"夏普比率：{metrics.sharpe_ratio if metrics else 'N/A'}\n"
-            f"基金数量：{len(report.holdings)}只\n\n"
-            f"调仓建议：\n" + "\n".join(
-                f"- [{r.get('priority','')}] {r.get('title','')}" for r in recs[:3]
-            ) + "\n\n"
-            f"格式：\n"
-            f"【发现的问题】...\n"
-            f"【建议方案】...\n"
-            f"【预期效果】..."
+            "你是一个基金组合诊断助手。根据以下持仓数据，输出三段式调仓方案。要求具体：给出基金代码和调整比例。\n\n"
+            f"健康分{report.health_score}/100 年化{metrics.annual_return if metrics else 'N/A'}% "
+            f"最大回撤{metrics.conservative_max_drawdown if metrics else 'N/A'}% 夏普{metrics.sharpe_ratio if metrics else 'N/A'}\n"
+            f"持仓{len(report.holdings)}只：\n"
+            f"{holdings_text}\n\n"
+            f"格式：\n【发现的问题】\n【建议方案】（每项含基金代码和调整比例，如将161725从30%降到15%，新增270002占20%）\n【预期效果】"
         )
 
         import urllib.request
@@ -759,7 +770,7 @@ class PortfolioClinic:
 
         try:
             resp = urllib.request.urlopen(
-                req, json.dumps(req_data).encode('utf-8'), timeout=30)
+                req, json.dumps(req_data).encode('utf-8'), timeout=90)
             result = json.loads(resp.read().decode('utf-8'))
             return result['choices'][0]['message']['content']
         except Exception as e:

@@ -275,6 +275,19 @@ h3{font-size:15px;margin-bottom:12px;color:#CBD5E1}
 
 <script>
 var _extractedHoldings=[],_confirmedHoldings=[],_analysisResult=null,_backtestResult=null;
+{% if shared_report %}
+  // 共享报告数据，直接渲染
+  var _sharedReport={{ shared_report|tojson }};
+  document.addEventListener('DOMContentLoaded',function(){
+    document.getElementById('extractedCard').style.display='none';
+    document.getElementById('uploadCard').style.display='none';
+    document.getElementById('resultsArea').style.display='';
+    _analysisResult=_sharedReport;
+    renderAnalysis(_sharedReport);renderHealthScore(_sharedReport);runBacktest(1);
+    showSimulator(_sharedReport.holdings);showShareOptions(_sharedReport);
+    if(_sharedReport.holdings)_confirmedHoldings=_sharedReport.holdings;
+  });
+{% endif %}
 function esc(s){var d=document.createElement('div');d.textContent=(s!=null?String(s):'');return d.innerHTML;}
 function formatPct(v){return (v>=0?'+':'')+v.toFixed(1)+'%';}
 function fmtNum(v){return v!=null?v.toFixed(1):'--';}
@@ -495,7 +508,21 @@ function simUpdate(){
 }
 
 // Share
-function showShareOptions(d){document.getElementById('shareSection').style.display='none';}
+function showShareOptions(d){
+  if(!d.share_id)return;
+  document.getElementById('shareSection').style.display='';
+  document.getElementById('shareUrlInput').value=window.location.origin+'/report/'+d.share_id;
+}
+function copyShareUrl(){
+  var inp=document.getElementById('shareUrlInput');inp.select();document.execCommand('copy');
+  var btn=document.getElementById('shareBtn');btn.textContent='已复制';setTimeout(function(){btn.textContent='复制分享链接';},2000);
+}
+function deleteShare(){
+  var url=document.getElementById('shareUrlInput').value;
+  var sid=url.split('/').pop();
+  fetch('/api/portfolio-eval/share/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({share_id:sid})})
+  .then(function(){document.getElementById('shareSection').style.display='none';document.getElementById('shareBtn').textContent='已删除';});
+}
 function copyShareUrl(){var inp=document.getElementById('shareUrlInput');inp.select();document.execCommand('copy');var btn=document.getElementById('shareBtn');btn.textContent='已复制';setTimeout(function(){btn.textContent='复制分享链接';},2000);}
 function deleteShare(){document.getElementById('shareSection').style.display='none';document.getElementById('shareBtn').textContent='已删除';}
 
