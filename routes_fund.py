@@ -1576,7 +1576,7 @@ def fetch_fund_info(fund_code):
     """从天天基金网爬虫获取基金信息（供analysis_report使用，~0.2s）"""
     try:
         data = crawl_fund_full(fund_code)
-        if not data or not data.get('net_value'):
+        if not data:
             return None
 
         returns = data.get('nav_growth_raw', [])
