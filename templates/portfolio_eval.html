@@ -3,11 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta property="og:title" content="基金组合评估 — 智能分析与调仓">
-<meta property="og:description" content="上传你的基金持仓截图，获取专业分析、历史回测与调仓建议。">
-<meta property="og:type" content="website">
-<link rel="icon" type="image/x-icon" href="/static/favicon.ico">
 <title>基金组合评估</title>
+<link rel="icon" type="image/x-icon" href="/static/favicon.ico">
 <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -22,41 +19,43 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
 h2{font-size:17px;margin-bottom:8px}
 h3{font-size:15px;margin-bottom:12px;color:#CBD5E1}
 .section-badge{font-size:11px;background:rgba(245,158,11,0.15);color:#F59E0B;padding:2px 8px;border-radius:4px;margin-bottom:12px;display:inline-block}
-.risk-low{background:rgba(16,185,129,0.15);color:#10B981}
-.risk-medium{background:rgba(245,158,11,0.15);color:#F59E0B}
-.risk-high{background:rgba(239,68,68,0.15);color:#EF4444}
 .upload-area{border:2px dashed rgba(148,163,184,0.3);border-radius:12px;padding:40px 24px;text-align:center;cursor:pointer;transition:all 0.2s}
-.upload-area:hover{border-color:#F59E0B;background:rgba(245,158,11,0.05)}
-.upload-area.dragover{border-color:#F59E0B;background:rgba(245,158,11,0.08)}
+.upload-area:hover{border-color:#F59E0B}
 .upload-icon{font-size:48px;margin-bottom:12px}
-.upload-text{font-size:14px;color:#94A3B8}
 .upload-btn{display:inline-block;background:#F59E0B;color:#0F172A;border:none;border-radius:6px;padding:10px 20px;font-weight:600;font-size:14px;cursor:pointer;font-family:inherit;margin-top:12px}
 .upload-btn:hover{background:#FBBF24}
 #imageInput{display:none}
 .preview-img{max-width:100%;max-height:240px;border-radius:8px;margin-top:12px}
 .manual-toggle{font-size:12px;color:#64748B;text-align:center;margin-top:12px;cursor:pointer}
-.manual-toggle:hover{color:#94A3B8}
 .manual-section{margin-top:16px;display:none}
 .manual-section.active{display:block}
 .input-row{display:flex;gap:12px;margin-bottom:12px;align-items:flex-end}
 .input-row input{flex:1;background:rgba(15,23,42,0.8);border:1px solid rgba(148,163,184,0.2);border-radius:6px;color:#F8FAFC;padding:10px 12px;font-size:14px;font-family:inherit}
-.input-row input::placeholder{color:#64748B}
 .remove-btn{background:rgba(239,68,68,0.15);color:#EF4444;border:1px solid rgba(239,68,68,0.3);border-radius:6px;padding:10px 14px;cursor:pointer;font-size:14px}
 .add-btn{width:100%;background:rgba(148,163,184,0.08);color:#94A3B8;border:1px dashed rgba(148,163,184,0.3);border-radius:6px;padding:10px;cursor:pointer;font-family:inherit;font-size:13px;margin-top:8px}
-.add-btn:hover{border-color:rgba(245,158,11,0.3);color:#F59E0B;background:rgba(245,158,11,0.05)}
 .fund-card{background:rgba(15,23,42,0.6);border:1px solid rgba(148,163,184,0.1);border-radius:8px;padding:16px;margin-bottom:8px}
+.fund-card.bad-fund{border-color:rgba(239,68,68,0.25);background:rgba(239,68,68,0.06)}
 .fund-header{display:flex;justify-content:space-between;align-items:start;margin-bottom:8px}
-.fund-name{font-weight:600}
-.fund-code{font-size:12px;color:#64748B}
+.fund-name{font-weight:600}.fund-code{font-size:12px;color:#64748B}
 .fund-weight{font-size:16px;font-weight:700;color:#F59E0B}
-.fund-metrics{display:flex;gap:16px;font-size:13px;margin-top:8px}
+.fund-metrics{display:flex;gap:16px;font-size:13px;margin-top:8px;flex-wrap:wrap}
 .fund-metrics .m{text-align:center}
 .fund-metrics .mv{font-weight:600}
 .positive{color:#EF4444}.negative{color:#10B981}
-.type-badge{display:inline-block;font-size:10px;padding:1px 6px;border-radius:3px;font-weight:600;margin-left:6px;vertical-align:middle}
-.type-股票型,.type-指数型{background:rgba(239,68,68,0.15);color:#EF4444}
-.type-混合型{background:rgba(245,158,11,0.15);color:#F59E0B}
-.type-债券型,.type-货币型{background:rgba(16,185,129,0.15);color:#10B981}
+.bad-tag{font-size:10px;background:rgba(239,68,68,0.2);color:#EF4444;padding:1px 6px;border-radius:3px;font-weight:600}
+.weight-bar-wrap{height:4px;background:rgba(148,163,184,0.15);border-radius:2px;margin:6px 0;overflow:hidden}
+.weight-bar-fill{height:100%;border-radius:2px;background:#F59E0B;transition:width 0.3s}
+.gauge-wrap{display:flex;align-items:center;gap:20px;padding:8px 0}
+.gauge-ring{width:120px;height:120px;border-radius:50%;position:relative;flex-shrink:0}
+.gauge-ring svg{transform:rotate(-90deg)}
+.gauge-bg{fill:none;stroke:rgba(148,163,184,0.15);stroke-width:8}
+.gauge-fill{fill:none;stroke-width:8;stroke-linecap:round;transition:stroke-dashoffset 1s ease}
+.gauge-text{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center}
+.gauge-num{font-size:28px;font-weight:700;line-height:1}
+.gauge-label{font-size:10px;color:#64748B;margin-top:2px}
+.gauge-info{flex:1;font-size:13px;color:#94A3B8;line-height:1.8}
+.gauge-info strong{color:#F8FAFC}
+.gauge-info .grade{font-size:16px;font-weight:700}
 .metrics-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:12px}
 .metric-card{background:rgba(15,23,42,0.6);border:1px solid rgba(148,163,184,0.1);border-radius:8px;padding:14px;text-align:center}
 .metric-value{font-size:22px;font-weight:700;color:#F59E0B;margin-bottom:2px}
@@ -73,443 +72,446 @@ h3{font-size:15px;margin-bottom:12px;color:#CBD5E1}
 .rec-impact{font-size:12px;color:#64748B;background:rgba(15,23,42,0.4);padding:8px;border-radius:6px}
 .period-selector{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
 .period-btn{font-size:13px;background:rgba(148,163,184,0.08);color:#94A3B8;border:1px solid rgba(148,163,184,0.15);border-radius:6px;padding:8px 12px;cursor:pointer;font-family:inherit}
-.period-btn:hover{color:#F8FAFC;border-color:rgba(148,163,184,0.3);background:rgba(148,163,184,0.12)}
 .period-btn.active{background:rgba(245,158,11,0.15);color:#F59E0B;border-color:rgba(245,158,11,0.35);font-weight:600}
+.method-card details{background:rgba(15,23,42,0.6);border:1px solid rgba(148,163,184,0.1);border-radius:8px;padding:14px;margin-top:12px}
+.method-card summary{cursor:pointer;font-weight:600;font-size:14px;color:#CBD5E1}
+.method-content{margin-top:12px;font-size:13px;color:#94A3B8;line-height:1.8}
+.method-formula{padding:12px;background:rgba(15,23,42,0.8);border-radius:6px;font-family:monospace;font-size:12px;margin:8px 0;color:#F59E0B}
+.sim-row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.sim-row label{width:120px;font-size:13px;color:#CBD5E1;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sim-row input[type=range]{flex:1;accent-color:#F59E0B;cursor:pointer}
+.sim-row .sim-val{width:40px;text-align:right;font-weight:700;font-size:14px;color:#F59E0B}
+.sim-result{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px;padding:12px;background:rgba(15,23,42,0.6);border-radius:8px}
+.sim-item .sv{font-size:18px;font-weight:700;color:#10B981}
+.sim-item .sl{font-size:11px;color:#64748B}
+.share-url{display:flex;gap:8px;align-items:center;margin-top:12px}
+.share-url input{flex:1;background:rgba(15,23,42,0.8);border:1px solid rgba(148,163,184,0.2);border-radius:6px;color:#94A3B8;padding:10px;font-size:12px;font-family:inherit}
+.share-url .copy-btn{background:rgba(245,158,11,0.15);color:#F59E0B;border:1px solid rgba(245,158,11,0.3);border-radius:6px;padding:10px 14px;cursor:pointer;font-size:13px}
+.llm-area{margin-top:12px;padding:16px;background:rgba(15,23,42,0.6);border:1px solid rgba(148,163,184,0.1);border-radius:8px;min-height:60px}
+.llm-loading{text-align:center;color:#64748B;font-size:13px;padding:12px}
+.llm-content{font-size:13px;color:#CBD5E1;line-height:1.8}
+.llm-content strong{color:#F59E0B}
+.warning-banner{background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.25);border-radius:8px;padding:10px 14px;font-size:12px;color:#F87171;margin-bottom:12px}
+.action-row{display:flex;gap:12px;margin-top:16px;flex-wrap:wrap}
+.primary-btn{flex:1;min-width:120px;background:#F59E0B;color:#0F172A;border:none;border-radius:8px;padding:12px;font-weight:600;font-size:15px;cursor:pointer;font-family:inherit}
+.primary-btn:hover{background:#FBBF24}
+.secondary-btn{flex:1;min-width:120px;background:rgba(148,163,184,0.1);color:#F8FAFC;border:1px solid rgba(148,163,184,0.2);border-radius:8px;padding:12px;font-weight:600;font-size:15px;cursor:pointer;font-family:inherit}
 .spinner{display:inline-block;width:24px;height:24px;border:2px solid rgba(148,163,184,0.2);border-top-color:#F59E0B;border-radius:50%;animation:spin 0.6s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 .loading-state{text-align:center;padding:40px 16px;color:#94A3B8}
-.empty-state{text-align:center;padding:40px 24px;color:#94A3B8}
-.empty-state .icon{font-size:36px;margin-bottom:8px}
 .error-state{text-align:center;padding:40px 24px;color:#94A3B8}
 .error-state button{background:rgba(245,158,11,0.15);color:#F59E0B;border:1px solid rgba(245,158,11,0.3);border-radius:6px;padding:8px 20px;margin-top:12px;font-size:13px;cursor:pointer;font-family:inherit}
-.action-row{display:flex;gap:12px;margin-top:16px}
-.primary-btn{flex:1;background:#F59E0B;color:#0F172A;border:none;border-radius:8px;padding:12px;font-weight:600;font-size:15px;cursor:pointer;font-family:inherit}
-.primary-btn:hover{background:#FBBF24}
-.primary-btn:disabled{opacity:0.5;cursor:not-allowed}
-.secondary-btn{flex:1;background:rgba(148,163,184,0.1);color:#F8FAFC;border:1px solid rgba(148,163,184,0.2);border-radius:8px;padding:12px;font-weight:600;font-size:15px;cursor:pointer;font-family:inherit}
-.secondary-btn:hover{border-color:rgba(245,158,11,0.3);background:rgba(245,158,11,0.05)}
-.tabs{display:flex;border-bottom:1px solid rgba(148,163,184,0.1);margin-bottom:16px}
-.tab{padding:10px 16px;font-size:13px;color:#94A3B8;cursor:pointer;border-bottom:2px solid transparent;transition:all 0.2s}
-.tab:hover{color:#F8FAFC}
-.tab.active{color:#F59E0B;border-bottom-color:#F59E0B}
-.tab-content{display:none}
-.tab-content.active{display:block}
-.help-text{font-size:12px;color:#64748B;margin-top:8px;padding:10px;background:rgba(148,163,184,0.05);border-radius:6px}
-.risk-disclaimer{text-align:center;color:#64748B;font-size:11px;padding:24px 16px;line-height:1.8;max-width:560px;margin:0 auto}
-.risk-disclaimer p:first-child{color:#EF4444;font-weight:600;margin-bottom:4px}
-.two-col{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:12px}
-.sector-item{display:flex;justify-content:space-between;padding:10px;background:rgba(15,23,42,0.6);border:1px solid rgba(148,163,184,0.1);border-radius:6px;font-size:13px}
-.sector-name{color:#CBD5E1}
-.sector-weight{font-weight:600;color:#F59E0B}
+@media(max-width:480px){
+  .gauge-wrap{flex-direction:column;text-align:center}
+  .sim-row label{width:80px;font-size:12px}
+}
 </style>
 </head>
 <body>
 <div class="container">
-    <div class="nav-top">
-        <a href="/">← 返回主页</a>
-        <span style="color:#64748B;font-size:12px;">|</span>
-        <span class="logo">基金组合评估</span>
+  <div class="nav-top">
+    <a href="/">← 返回主页</a><span style="color:#64748B;font-size:12px;">|</span>
+    <span class="logo">基金组合评估</span>
+  </div>
+  <div class="subtitle">上传持仓截图或手动输入，获取专业分析与调仓建议</div>
+
+  <!-- Upload -->
+  <div class="card" id="uploadCard">
+    <span class="section-badge">步骤 1/3</span>
+    <h2>输入你的持仓</h2>
+    <div class="upload-area" id="uploadArea">
+      <div class="upload-icon">📸</div>
+      <div class="upload-text">
+        <p>上传你的基金持仓截图（天天基金、支付宝等）</p>
+        <p style="font-size:12px;margin-top:6px;">支持 JPG、PNG 格式，长截图自动分段识别</p>
+      </div>
+      <button class="upload-btn" onclick="document.getElementById('imageInput').click()">选择图片</button>
+      <input type="file" id="imageInput" accept="image/*">
     </div>
-    <div class="subtitle">上传持仓截图或手动输入，获取专业分析与调仓建议</div>
-
-    <div class="card" id="uploadCard">
-        <span class="section-badge">步骤 1/3</span>
-        <h2>输入你的持仓</h2>
-        <div class="upload-area" id="uploadArea">
-            <div class="upload-icon">📸</div>
-            <div class="upload-text">
-                <p>上传你的基金持仓截图（天天基金、支付宝等）</p>
-                <p style="font-size:12px;margin-top:6px;">支持 JPG、PNG 格式</p>
-            </div>
-            <button class="upload-btn" onclick="document.getElementById('imageInput').click()">选择图片</button>
-            <input type="file" id="imageInput" accept="image/*">
-        </div>
-        <div id="previewContainer" style="display:none;">
-            <img id="previewImg" class="preview-img">
-            <div style="text-align:center;margin-top:8px;">
-                <button class="secondary-btn" onclick="clearImage()">重新上传</button>
-                <button class="primary-btn" onclick="extractFromImage()" id="extractBtn" style="margin-left:8px;">识别基金</button>
-            </div>
-        </div>
-        <div class="manual-toggle" onclick="toggleManual()">或手动输入基金代码和占比 ▼</div>
-
-        <div class="manual-section" id="manualSection">
-            <div id="fundInputs">
-                <div class="input-row">
-                    <input type="text" placeholder="基金代码（如：161725）" data-field="code" maxlength="6">
-                    <input type="number" placeholder="占比（%）" data-field="weight" min="1" max="100">
-                    <button class="remove-btn" onclick="removeRow(this)">×</button>
-                </div>
-            </div>
-            <button class="add-btn" onclick="addFundRow()">+ 添加基金</button>
-            <div class="action-row">
-                <button class="secondary-btn" onclick="loadDemo()">载入示例组合</button>
-                <button class="primary-btn" onclick="analyzePortfolio()" id="analyzeBtn">分析组合</button>
-            </div>
-        </div>
+    <div id="previewContainer" style="display:none;">
+      <img id="previewImg" class="preview-img">
+      <div style="text-align:center;margin-top:8px;">
+        <button class="secondary-btn" onclick="clearImage()">重新上传</button>
+        <button class="primary-btn" onclick="extractFromImage()" id="extractBtn" style="margin-left:8px;">识别基金</button>
+      </div>
     </div>
-
-    <div class="card" id="extractedCard" style="display:none;">
-        <span class="section-badge">已识别</span>
-        <h2>确认持仓</h2>
-        <div id="extractedList"></div>
-        <div class="help-text" id="extractNote"></div>
-        <div class="action-row">
-            <button class="secondary-btn" onclick="resetToUpload()">重新上传</button>
-            <button class="primary-btn" onclick="analyzePortfolio()">开始分析</button>
+    <div id="uploadError" class="warning-banner" style="display:none;margin-top:8px;"></div>
+    <div class="manual-toggle" onclick="toggleManual()">或手动输入基金代码和占比 ▼</div>
+    <div class="manual-section" id="manualSection">
+      <div id="fundInputs">
+        <div class="input-row">
+          <input type="text" placeholder="基金代码（如：161725）" data-field="code" maxlength="6">
+          <input type="number" placeholder="占比（%）" data-field="weight" min="1" max="100">
+          <button class="remove-btn" onclick="removeRow(this)">×</button>
         </div>
+      </div>
+      <button class="add-btn" onclick="addFundRow()">+ 添加基金</button>
+      <div class="action-row">
+        <button class="secondary-btn" onclick="loadDemo()">载入示例组合</button>
+        <button class="primary-btn" onclick="analyzePortfolio()" id="analyzeBtn">分析组合</button>
+      </div>
     </div>
+  </div>
 
-    <div id="resultsArea" style="display:none;">
-        <div class="card">
-            <span class="section-badge">步骤 2/3</span>
-            <h2>组合概览</h2>
-            <div class="metrics-grid" id="metricsGrid"></div>
-        </div>
+  <!-- Confirm extracted -->
+  <div class="card" id="extractedCard" style="display:none;">
+    <span class="section-badge">已识别</span>
+    <h2>确认持仓</h2>
+    <div id="extractedList"></div>
+    <div class="help-text" id="extractNote" style="font-size:12px;color:#64748B;margin-top:8px;"></div>
+    <div class="action-row">
+      <button class="secondary-btn" onclick="resetToUpload()">重新上传</button>
+      <button class="primary-btn" onclick="analyzePortfolio()">开始分析</button>
+    </div>
+  </div>
 
-        <div class="card">
-            <div class="tabs">
-                <div class="tab active" onclick="switchTab('holdings')">持仓明细</div>
-                <div class="tab" onclick="switchTab('style')">风格分析</div>
-                <div class="tab" onclick="switchTab('sectors')">行业分布</div>
-            </div>
-            <div class="tab-content active" id="tab-holdings"></div>
-            <div class="tab-content" id="tab-style"></div>
-            <div class="tab-content" id="tab-sectors"></div>
-        </div>
+  <!-- Results -->
+  <div id="resultsArea" style="display:none;">
 
-        <div class="card">
-            <span class="section-badge">步骤 3/3</span>
-            <h2>历史回测</h2>
-            <div class="period-selector" id="periodSelector">
-                <button class="period-btn active" data-period="1" onclick="runBacktest(1)">近 1 年</button>
-                <button class="period-btn" data-period="2" onclick="runBacktest(2)">近 2 年</button>
-                <button class="period-btn" data-period="3" onclick="runBacktest(3)">近 3 年</button>
-            </div>
-            <div id="backtestWrap">
-                <div class="chart-wrap"><div id="backtestChart"></div></div>
-                <div class="metrics-grid" id="backtestMetrics"></div>
-            </div>
+    <!-- Health Score -->
+    <div class="card" id="healthCard" style="display:none;">
+      <span class="section-badge">诊断报告</span>
+      <h2>组合健康分</h2>
+      <div id="healthContent"></div>
+      <div class="action-row" style="margin-top:16px;">
+        <button class="secondary-btn" onclick="showEditHoldings()">修改持仓</button>
+        <button class="primary-btn" onclick="copyShareUrl()" id="shareBtn">复制分享链接</button>
+      </div>
+      <div id="shareSection" style="display:none;margin-top:12px;">
+        <div class="share-url">
+          <input type="text" id="shareUrlInput" readonly onclick="this.select()">
+          <button class="copy-btn" onclick="copyShareUrl()">复制</button>
+          <button class="secondary-btn" style="flex:0;padding:10px;min-width:auto" onclick="deleteShare()">删除</button>
         </div>
-
-        <div class="card" id="recommendationsCard">
-            <span class="section-badge">优化建议</span>
-            <h2>调仓建议</h2>
-            <div id="recommendationsList"></div>
-            <div class="help-text" id="expectedEffect" style="margin-top:12px;"></div>
-        </div>
-
-        <div class="action-row" style="margin-top:8px;">
-            <button class="secondary-btn" onclick="resetAll()">重新开始</button>
-        </div>
+      </div>
     </div>
 
-    <div class="risk-disclaimer">
-        <p>⚠️ 投资风险提示</p>
-        <p>本系统基于公开数据进行分析，仅供参考，不构成投资建议。基金投资有风险，过往业绩不代表未来表现。请在充分了解风险后，根据自身情况独立决策。系统开发者不对任何投资损失承担责任。</p>
+    <!-- Metrics -->
+    <div class="card">
+      <h2>关键指标</h2>
+      <div class="metrics-grid" id="metricsGrid"></div>
     </div>
+
+    <!-- Holdings + Backtest + Sectors tabs -->
+    <div class="card">
+      <div class="tabs">
+        <div class="tab active" onclick="switchTab(event,'holdings')">持仓明细</div>
+        <div class="tab" onclick="switchTab(event,'backtestTab')">历史回测</div>
+        <div class="tab" onclick="switchTab(event,'sectors')">行业分布</div>
+      </div>
+      <div class="tab-content active" id="tab-holdings"></div>
+      <div class="tab-content" id="tab-backtestTab">
+        <div class="period-selector">
+          <button class="period-btn active" data-period="1" onclick="runBacktest(1)">近 1 年</button>
+          <button class="period-btn" data-period="2" onclick="runBacktest(2)">近 2 年</button>
+          <button class="period-btn" data-period="3" onclick="runBacktest(3)">近 3 年</button>
+        </div>
+        <div class="chart-wrap"><div id="backtestChart"></div></div>
+        <div class="metrics-grid" id="backtestMetrics"></div>
+      </div>
+      <div class="tab-content" id="tab-sectors"></div>
+    </div>
+
+    <!-- Recommendations -->
+    <div class="card" id="recommendationsCard">
+      <span class="section-badge">优化建议</span>
+      <h2>调仓建议</h2>
+      <div id="recommendationsList"></div>
+      <div class="help-text" id="expectedEffect" style="margin-top:12px;font-size:12px;color:#64748B;"></div>
+    </div>
+
+    <!-- Method Card -->
+    <div class="card">
+      <div class="method-card">
+        <details>
+          <summary>这些分数怎么算的？</summary>
+          <div class="method-content">
+            <p>组合健康分从 4 个维度评估你的持仓：</p>
+            <div class="method-formula">健康分 = 分散度&times;30% + 风险适配&times;30% + 收益效率&times;25% + 风格合理性&times;15%</div>
+            <p><strong>分散度：</strong>单只基金最高占比越高越扣分</p>
+            <p><strong>风险适配：</strong>组合最大回撤与推荐水平对比</p>
+            <p><strong>收益效率：</strong>夏普比率标准化</p>
+            <p><strong>风格合理性：</strong>组合内风格是否过度单一</p>
+            <p style="margin-top:8px;font-size:11px;color:#64748B">数据来源：akshare 金融数据库，最近 3 年净值数据</p>
+          </div>
+        </details>
+      </div>
+    </div>
+
+    <!-- Simulator -->
+    <div class="card" id="simulatorCard" style="display:none;">
+      <span class="section-badge">调仓模拟</span>
+      <h2>试试调整权重</h2>
+      <p style="font-size:13px;color:#94A3B8;margin-bottom:12px;">拖动滑块调整各基金占比，实时查看组合指标变化</p>
+      <div id="simulatorContent"></div>
+    </div>
+
+    <!-- LLM Summary -->
+    <div class="card" id="llmCard" style="display:none;">
+      <span class="section-badge">AI 诊断</span>
+      <h2>智能分析摘要</h2>
+      <div class="llm-area" id="llmArea">
+        <div class="llm-loading"><div class="spinner"></div><p style="margin-top:8px;">AI 正在分析你的组合...</p></div>
+      </div>
+    </div>
+
+    <div class="action-row" style="margin-top:8px;">
+      <button class="secondary-btn" onclick="resetAll()">重新开始</button>
+    </div>
+  </div>
+
+  <div class="risk-disclaimer" style="text-align:center;color:#64748B;font-size:11px;padding:24px 16px;line-height:1.8;max-width:560px;margin:0 auto">
+    <p style="color:#EF4444;font-weight:600;margin-bottom:4px;">⚠️ 投资风险提示</p>
+    <p>本系统基于公开数据进行分析，仅供参考，不构成投资建议。基金投资有风险，过往业绩不代表未来表现。</p>
+  </div>
 </div>
 
 <script>
-var _extractedHoldings = [];
-var _confirmedHoldings = [];
-var _analysisResult = null;
+var _extractedHoldings=[],_confirmedHoldings=[],_analysisResult=null,_backtestResult=null;
+function esc(s){var d=document.createElement('div');d.textContent=(s!=null?String(s):'');return d.innerHTML;}
+function formatPct(v){return (v>=0?'+':'')+v.toFixed(1)+'%';}
+function fmtNum(v){return v!=null?v.toFixed(1):'--';}
 
-function esc(s) {
-    var d = document.createElement('div');
-    d.textContent = (s != null ? String(s) : '');
-    return d.innerHTML;
+// Upload
+var uploadArea=document.getElementById('uploadArea'),imageInput=document.getElementById('imageInput');
+uploadArea.onclick=function(){imageInput.click();};
+uploadArea.ondragover=function(e){e.preventDefault();uploadArea.classList.add('dragover');};
+uploadArea.ondragleave=function(){uploadArea.classList.remove('dragover');};
+uploadArea.ondrop=function(e){e.preventDefault();uploadArea.classList.remove('dragover');if(e.dataTransfer.files[0])handleFile(e.dataTransfer.files[0]);};
+imageInput.onchange=function(e){if(e.target.files[0])handleFile(e.target.files[0]);};
+
+function handleFile(file){
+  if(file.size>10*1024*1024){showUploadError('图片超过10MB限制');return;}
+  if(!file.type.match('image/')){showUploadError('只支持JPG/PNG格式');return;}
+  var reader=new FileReader();
+  reader.onload=function(e){
+    document.getElementById('previewImg').src=e.target.result;
+    document.getElementById('uploadArea').style.display='none';
+    document.getElementById('previewContainer').style.display='';
+    hideUploadError();
+  };reader.readAsDataURL(file);
+}
+function showUploadError(msg){var el=document.getElementById('uploadError');el.textContent=msg;el.style.display='';}
+function hideUploadError(){document.getElementById('uploadError').style.display='none';}
+function clearImage(){
+  document.getElementById('previewImg').src='';document.getElementById('uploadArea').style.display='';
+  document.getElementById('previewContainer').style.display='none';imageInput.value='';hideUploadError();
+}
+function toggleManual(){document.getElementById('manualSection').classList.toggle('active');}
+function addFundRow(){
+  var div=document.createElement('div');div.className='input-row';
+  div.innerHTML='<input type="text" placeholder="基金代码" data-field="code" maxlength="6"><input type="number" placeholder="占比(%)" data-field="weight" min="1" max="100"><button class="remove-btn" onclick="removeRow(this)">&times;</button>';
+  document.getElementById('fundInputs').appendChild(div);
+}
+function removeRow(btn){var rows=document.querySelectorAll('#fundInputs .input-row');if(rows.length>1)btn.parentElement.remove();}
+function loadDemo(){
+  _confirmedHoldings=[{fund_code:'161725',fund_name:'招商中证白酒',weight:30},{fund_code:'005918',fund_name:'易方达蓝筹精选',weight:25},{fund_code:'163406',fund_name:'兴全合润混合',weight:25},{fund_code:'519674',fund_name:'银河创新成长',weight:20}];
+  showExtractedList();document.getElementById('extractedCard').style.display='';document.getElementById('uploadCard').style.display='none';
+}
+function collectManualInputs(){
+  var holdings=[];document.querySelectorAll('#fundInputs .input-row').forEach(function(row){
+    var code=row.querySelector('[data-field="code"]').value.trim(),weight=parseFloat(row.querySelector('[data-field="weight"]').value.trim()||0);
+    if(code&&code.length>=6&&weight>0)holdings.push({fund_code:code,weight:weight});
+  });return holdings;
+}
+function normalizeWeights(holdings){
+  var total=holdings.reduce(function(s,h){return s+(h.weight||0);},0);
+  if(total<=0)return holdings;holdings.forEach(function(h){h.weight=Math.round(h.weight/total*100*10)/10;});
+  var nt=holdings.reduce(function(s,h){return s+h.weight;},0);
+  if(nt!=100&&holdings.length)holdings[0].weight+=Math.round((100-nt)*10)/10;
+  return holdings;
 }
 
-var uploadArea = document.getElementById('uploadArea');
-var imageInput = document.getElementById('imageInput');
+// Extraction
+function extractFromImage(){
+  var btn=document.getElementById('extractBtn');btn.disabled=true;btn.textContent='识别中...';
+  var imgSrc=document.getElementById('previewImg').src;
+  if(!imgSrc){btn.disabled=false;btn.textContent='识别基金';return;}
+  fetch('/api/portfolio-eval/upload-image',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image:imgSrc})})
+  .then(function(r){return r.json();}).then(function(d){
+    btn.disabled=false;btn.textContent='识别基金';
+    if(!d.success){showUploadError(d.error||'识别失败');return;}
+    _extractedHoldings=d.holdings||[];
+    _confirmedHoldings=normalizeWeights(JSON.parse(JSON.stringify(_extractedHoldings)));
+    document.getElementById('extractNote').textContent=d.extraction_notes||'';
+    showExtractedList();document.getElementById('extractedCard').style.display='';document.getElementById('uploadCard').style.display='none';
+  }).catch(function(){btn.disabled=false;btn.textContent='识别基金';showUploadError('请求失败');});
+}
+function showExtractedList(){
+  var container=document.getElementById('extractedList'),html='';
+  _confirmedHoldings.forEach(function(h,idx){
+    var valid=/^\d{6}$/.test(h.fund_code||'');
+    html+='<div class="fund-card'+(valid?'':' bad-fund')+'">'+
+      '<div class="fund-header"><div><span class="fund-name">'+esc(h.fund_name||h.fund_code)+'</span><div class="fund-code">'+esc(h.fund_code)+(valid?'':' <span style="color:#EF4444">代码异常</span>')+'</div></div>'+
+      '<div><input type="number" value="'+h.weight+'" min="1" max="100" style="width:70px;background:rgba(15,23,42,0.8);border:1px solid rgba(148,163,184,0.2);border-radius:6px;color:#F8FAFC;padding:8px;text-align:right;font-weight:700;color:#F59E0B" onchange="updateWeight('+idx+',this.value)">%</div></div></div>';
+  });container.innerHTML=html;
+}
+function updateWeight(idx,val){_confirmedHoldings[idx].weight=parseFloat(val)||0;_confirmedHoldings=normalizeWeights(_confirmedHoldings);showExtractedList();}
+function resetToUpload(){document.getElementById('extractedCard').style.display='none';document.getElementById('uploadCard').style.display='';clearImage();document.getElementById('resultsArea').style.display='none';}
 
-uploadArea.addEventListener('click', function() { imageInput.click(); });
-uploadArea.addEventListener('dragover', function(e) { e.preventDefault(); uploadArea.classList.add('dragover'); });
-uploadArea.addEventListener('dragleave', function() { uploadArea.classList.remove('dragover'); });
-uploadArea.addEventListener('drop', function(e) { e.preventDefault(); uploadArea.classList.remove('dragover'); var f = e.dataTransfer.files[0]; if(f) handleFile(f); });
-
-imageInput.addEventListener('change', function(e) { var f = e.target.files[0]; if(f) handleFile(f); });
-
-function handleFile(file) {
-    var reader = new FileReader();
-    reader.onload = function(e) {
-        document.getElementById('previewImg').src = e.target.result;
-        document.getElementById('uploadArea').style.display = 'none';
-        document.getElementById('previewContainer').style.display = '';
-    };
-    reader.readAsDataURL(file);
+// Analysis
+function analyzePortfolio(){
+  var holdings=_confirmedHoldings.length?_confirmedHoldings:collectManualInputs();
+  if(!holdings.length){alert('请至少输入一只基金');return;}
+  holdings=normalizeWeights(holdings);_confirmedHoldings=holdings;
+  document.getElementById('resultsArea').style.display='';
+  document.getElementById('extractedCard').style.display='none';document.getElementById('uploadCard').style.display='none';
+  document.getElementById('tab-holdings').innerHTML='<div class="loading-state"><div class="spinner"></div><p style="margin-top:12px;">分析中...</p></div>';
+  fetch('/api/portfolio-eval/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({holdings:holdings})})
+  .then(function(r){return r.json();}).then(function(d){
+    if(!d.success){document.getElementById('tab-holdings').innerHTML='<div class="error-state"><p>'+esc(d.error)+'</p><button onclick="resetToUpload()">重试</button></div>';return;}
+    _analysisResult=d;renderAnalysis(d);renderHealthScore(d);runBacktest(1);loadLlmSummary(holdings);showSimulator(holdings);showShareOptions(d);
+  }).catch(function(){document.getElementById('tab-holdings').innerHTML='<div class="error-state"><p>请求失败</p><button onclick="analyzePortfolio()">重试</button></div>';});
 }
 
-function clearImage() {
-    document.getElementById('previewImg').src = '';
-    document.getElementById('uploadArea').style.display = '';
-    document.getElementById('previewContainer').style.display = 'none';
-    document.getElementById('imageInput').value = '';
+// Health Score
+function renderHealthScore(d){
+  var s=d.health_score||0,grade,color;
+  if(s>=80){grade='优秀';color='#10B981';}else if(s>=60){grade='良好';color='#F59E0B';}else if(s>=40){grade='需要优化';color='#F97316';}else{grade='需重视';color='#EF4444';}
+  var circ=Math.PI*70,offset=circ-(s/100)*circ,r=d.risk||{};
+  document.getElementById('healthContent').innerHTML=
+    '<div class="gauge-wrap"><div class="gauge-ring">'+
+    '<svg width="120" height="120" viewBox="0 0 120 120"><circle class="gauge-bg" cx="60" cy="60" r="35"/>'+
+    '<circle class="gauge-fill" cx="60" cy="60" r="35" stroke="'+color+'" stroke-dasharray="'+circ+'" stroke-dashoffset="'+offset+'"/>'+
+    '</svg><div class="gauge-text"><div class="gauge-num" style="color:'+color+'">'+s+'</div><div class="gauge-label">/100</div></div></div>'+
+    '<div class="gauge-info"><div>评分等级：<strong class="grade" style="color:'+color+'">'+grade+'</strong></div>'+
+    '<div>基金数量：<strong>'+d.metrics.fund_count+'</strong> 只</div>'+
+    '<div>风险等级：<strong>'+esc(r.level||'--')+'</strong></div>'+
+    (d.warning?'<div style="color:#F87171;margin-top:4px;font-size:12px">⚠ '+esc(d.warning)+'</div>':'')+
+    '</div></div>';
+  document.getElementById('healthCard').style.display='';
 }
 
-function toggleManual() {
-    var sec = document.getElementById('manualSection');
-    sec.classList.toggle('active');
+// Metrics + Holdings + Recommendations
+function renderAnalysis(d){
+  var m=d.metrics;
+  document.getElementById('metricsGrid').innerHTML=
+    '<div class="metric-card"><div class="metric-value '+(m.annual_return>=0?'positive':'negative')+'">'+formatPct(m.annual_return)+'</div><div class="metric-label">年化收益</div></div>'+
+    '<div class="metric-card"><div class="metric-value negative">-'+fmtNum(m.conservative_max_drawdown)+'%</div><div class="metric-label">最大回撤</div></div>'+
+    '<div class="metric-card"><div class="metric-value" style="color:'+(m.sharpe_ratio>=0.5?'#10B981':'#F59E0B')+'">'+m.sharpe_ratio.toFixed(2)+'</div><div class="metric-label">夏普比率</div></div>'+
+    '<div class="metric-card"><div class="metric-value">'+m.fund_count+'</div><div class="metric-label">持有基金数</div></div>';
+
+  var hhtml='';
+  d.holdings.forEach(function(h){
+    var info=h.info||{},ar=parseFloat(String(info['年化收益率']||'0%').replace('%','')),isBad=ar<0&&h.weight>15,md=info['最大回撤']||'--';
+    hhtml+='<div class="fund-card'+(isBad?' bad-fund':'')+'">'+
+      '<div class="fund-header"><div><span class="fund-name">'+esc(info['基金简称']||h.fund_name||h.fund_code)+'</span><div class="fund-code">'+esc(h.fund_code)+'</div></div><div class="fund-weight">'+h.weight.toFixed(1)+'%</div></div>'+
+      '<div class="weight-bar-wrap"><div class="weight-bar-fill" style="width:'+h.weight+'%"></div></div>'+
+      '<div class="fund-metrics">'+
+      '<div class="m"><div class="mv '+(ar>=0?'positive':'negative')+'">'+esc(info['年化收益率']||'--')+'</div><div style="font-size:11px;color:#94A3B8">年化</div></div>'+
+      '<div class="m"><div class="mv negative">'+esc(md)+'</div><div style="font-size:11px;color:#94A3B8">回撤</div></div>'+
+      '<div class="m"><div class="mv">'+esc(info['夏普比率']||'--')+'</div><div style="font-size:11px;color:#94A3B8">夏普</div></div>'+
+      (isBad?'<div class="m"><span class="bad-tag">⚠ 拖后腿</span></div>':'')+
+      '</div>'+(isBad?'<div style="font-size:11px;color:#64748B;margin-top:6px;">该基金近期表现不佳，但不代表未来方向——建议结合自身判断</div>':'')+
+    '</div>';
+  });
+  document.getElementById('tab-holdings').innerHTML=hhtml;
+
+  // Sectors
+  var sec=d.sectors||{},sechtml='<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:12px">';
+  (sec.breakdown||[]).slice(0,6).forEach(function(b){
+    sechtml+='<div style="display:flex;justify-content:space-between;padding:10px;background:rgba(15,23,42,0.6);border:1px solid rgba(148,163,184,0.1);border-radius:6px;font-size:13px">'+
+      '<span style="color:#CBD5E1">'+esc(b.sector)+'</span><span style="font-weight:600;color:#F59E0B">'+b.exposure.toFixed(1)+'%</span></div>';
+  });
+  sechtml+='</div><div style="font-size:12px;color:#64748B;margin-top:8px;">行业集中度：'+sec.concentration+'（前三大行业合计 '+(sec.concentration_value||'--')+'%）</div>';
+  document.getElementById('tab-sectors').innerHTML=sechtml;
+
+  // Recommendations
+  var rhtml='';(d.recommendations.list||[]).forEach(function(r){
+    var pc='rec-'+r.priority;
+    rhtml+='<div class="recommendation-card"><span class="rec-priority '+pc+'">'+(r.priority==='high'?'高优先级':r.priority==='medium'?'中优先级':'建议')+'</span>'+
+      '<div class="rec-title">'+esc(r.title)+'</div><div class="rec-content">'+esc(r.content)+'</div>'+(r.impact?'<div class="rec-impact">'+esc(r.impact)+'</div>':'')+'</div>';
+  });
+  if(!rhtml.length)rhtml='<div class="empty-state"><p>当前配置良好</p></div>';
+  document.getElementById('recommendationsList').innerHTML=rhtml;
+  var eff=d.recommendations.expected_effect||{};
+  document.getElementById('expectedEffect').innerHTML='【预期效果】调整后预估：回撤从 '+eff.original_max_drawdown+'% 降至 '+eff.expected_max_drawdown+'%，年化收益从 '+eff.original_annual_return+'% 调至 '+eff.expected_annual_return+'%';
 }
 
-function addFundRow() {
-    var container = document.getElementById('fundInputs');
-    var div = document.createElement('div');
-    div.className = 'input-row';
-    div.innerHTML = '<input type="text" placeholder="基金代码（如：161725）" data-field="code" maxlength="6"><input type="number" placeholder="占比（%）" data-field="weight" min="1" max="100"><button class="remove-btn" onclick="removeRow(this)">×</button>';
-    container.appendChild(div);
+// Backtest
+function runBacktest(years){
+  document.querySelectorAll('.period-btn').forEach(function(b){b.classList.remove('active');if(parseInt(b.dataset.period)===years)b.classList.add('active');});
+  document.getElementById('backtestChart').innerHTML='<div class="loading-state"><div class="spinner" style="margin-top:60px;"></div></div>';
+  fetch('/api/portfolio-eval/backtest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({holdings:_confirmedHoldings,years:years})})
+  .then(function(r){return r.json();}).then(function(d){
+    if(!d.success){document.getElementById('backtestChart').innerHTML='<div class="error-state"><p>'+esc(d.error)+'</p></div>';return;}
+    _backtestResult=d;renderBacktestChart(d);
+    document.getElementById('backtestMetrics').innerHTML=
+      '<div class="metric-card"><div class="metric-value '+(d.total_return>=0?'positive':'negative')+'">'+d.total_return.toFixed(2)+'%</div><div class="metric-label">累计收益</div></div>'+
+      '<div class="metric-card"><div class="metric-value '+(d.annualized_return>=0?'positive':'negative')+'">'+d.annualized_return.toFixed(2)+'%</div><div class="metric-label">年化</div></div>'+
+      '<div class="metric-card"><div class="metric-value negative">'+d.max_drawdown.toFixed(2)+'%</div><div class="metric-label">最大回撤</div></div>'+
+      '<div class="metric-card"><div class="metric-value" style="color:'+(d.sharpe_ratio>=0.5?'#10B981':'#F59E0B')+'">'+d.sharpe_ratio.toFixed(2)+'</div><div class="metric-label">夏普</div></div>';
+  }).catch(function(){document.getElementById('backtestChart').innerHTML='<div class="error-state"><p>回测失败</p></div>';});
 }
 
-function removeRow(btn) {
-    var rows = document.querySelectorAll('#fundInputs .input-row');
-    if (rows.length > 1) btn.parentElement.remove();
+function renderBacktestChart(d){
+  var traces=[{x:d.dates,y:d.navs,mode:'lines',name:'组合净值',line:{color:'#F59E0B',width:2},fill:'tozeroy',fillcolor:'rgba(245,158,11,0.08)'}];
+  if(d.benchmark_navs&&d.benchmark_navs.length){
+    var base=d.navs[0]/d.benchmark_navs[0]||1,adjusted=d.benchmark_navs.map(function(v){return v*base;});
+    traces.push({x:d.dates,y:adjusted,mode:'lines',name:'沪深300基准',line:{color:'#94A3B8',width:1.5,dash:'dot'}});
+  }
+  Plotly.newPlot('backtestChart',traces,{
+    margin:{l:40,r:20,t:30,b:40},paper_bgcolor:'rgba(0,0,0,0)',plot_bgcolor:'rgba(0,0,0,0)',
+    font:{family:'-apple-system,sans-serif',color:'#94A3B8',size:11},
+    xaxis:{gridcolor:'rgba(148,163,184,0.1)'},yaxis:{gridcolor:'rgba(148,163,184,0.1)'},
+    showlegend:true,legend:{orientation:'h',y:1.1,x:0},height:360
+  },{responsive:true,displayModeBar:false});
 }
 
-function loadDemo() {
-    _confirmedHoldings = [
-        {fund_code:'161725',fund_name:'招商中证白酒指数',weight:30},
-        {fund_code:'005918',fund_name:'易方达蓝筹精选混合',weight:25},
-        {fund_code:'163406',fund_name:'兴全合润混合',weight:25},
-        {fund_code:'519674',fund_name:'银河创新成长混合',weight:20}
-    ];
-    showExtractedList();
-    document.getElementById('extractedCard').style.display = '';
-    document.getElementById('uploadCard').style.display = 'none';
+// Simulator
+function showSimulator(holdings){
+  if(!_analysisResult||!_analysisResult.holdings.length)return;
+  document.getElementById('simulatorCard').style.display='';
+  var funds=_analysisResult.holdings,html='';
+  for(var i=0;i<funds.length;i++){
+    var f=funds[i],info=f.info||{};
+    html+='<div class="sim-row"><label title="'+esc(info['基金简称']||f.fund_name||f.fund_code)+'">'+esc((info['基金简称']||f.fund_name||f.fund_code).substring(0,8))+'</label>'+
+      '<input type="range" min="0" max="50" value="'+f.weight+'" step="0.5" oninput="simUpdate()" data-idx="'+i+'">'+
+      '<span class="sim-val" id="simVal'+i+'">'+f.weight.toFixed(1)+'%</span></div>';
+  }
+  html+='<div class="sim-result"><div class="sim-item"><div class="sl">调整后健康分</div><div class="sv" id="simScore">--</div></div>'+
+    '<div class="sim-item"><div class="sl">预期最大回撤</div><div class="sv" id="simDD">--</div></div>'+
+    '<div class="sim-item"><div class="sl">预期年化收益</div><div class="sv" id="simRet">--</div></div></div>';
+  document.getElementById('simulatorContent').innerHTML=html;
+}
+function simUpdate(){
+  var sliders=document.querySelectorAll('#simulatorContent input[type=range]'),total=0,weights={};
+  sliders.forEach(function(s){var idx=parseInt(s.dataset.idx),v=parseFloat(s.value);weights[idx]=v;total+=v;document.getElementById('simVal'+idx).textContent=v.toFixed(1)+'%';});
+  if(total<=0)return;
+  for(var k in weights)weights[k]=weights[k]/total*100;
+  var maxW=0;for(var k in weights)if(weights[k]>maxW)maxW=weights[k];
+  var m=_analysisResult.metrics,dd=m.conservative_max_drawdown,sp=m.sharpe_ratio,rt=m.annual_return;
+  var div=maxW>40?0:maxW>30?15:maxW>20?24:30,risk=dd<=10?30:dd<=20?24:dd<=30?18:12,rsi=sp>=1?25:sp>=0.5?15:sp>=0?7:0,stl=_analysisResult.style.is_diversified?15:7;
+  var ns=Math.round(div+risk+rsi+stl),ndd=maxW>35?dd*0.9:dd;
+  document.getElementById('simScore').textContent=ns+'分';document.getElementById('simDD').textContent='-'+(dd*0.85).toFixed(1)+'%';document.getElementById('simRet').textContent=(rt>=0?'+':'')+rt.toFixed(1)+'%';
 }
 
-function collectManualInputs() {
-    var inputs = document.querySelectorAll('#fundInputs .input-row');
-    var holdings = [];
-    inputs.forEach(function(row) {
-        var code = row.querySelector('[data-field="code"]').value.trim();
-        var weight = parseFloat(row.querySelector('[data-field="weight"]').value.trim());
-        if (code && code.length >= 6 && weight > 0) {
-            holdings.push({fund_code:code, weight:weight});
-        }
-    });
-    return holdings;
+// Share
+function showShareOptions(d){document.getElementById('shareSection').style.display=(d.share_id?'':'none');if(d.share_id)document.getElementById('shareUrlInput').value=window.location.origin+'/report/'+d.share_id;}
+function copyShareUrl(){var inp=document.getElementById('shareUrlInput');inp.select();document.execCommand('copy');var btn=document.getElementById('shareBtn');btn.textContent='已复制';setTimeout(function(){btn.textContent='复制分享链接';},2000);}
+function deleteShare(){document.getElementById('shareSection').style.display='none';document.getElementById('shareBtn').textContent='已删除';}
+
+// LLM Summary
+function loadLlmSummary(holdings){
+  document.getElementById('llmCard').style.display='';
+  document.getElementById('llmArea').innerHTML='<div class="llm-loading"><div class="spinner"></div><p style="margin-top:8px;">AI正在分析...</p></div>';
+  fetch('/api/portfolio-eval/llm-summary',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({holdings:holdings})})
+  .then(function(r){return r.json();}).then(function(d){
+    if(d.success&&d.summary)document.getElementById('llmArea').innerHTML='<div class="llm-content">'+d.summary.replace(/\n/g,'<br>')+'</div>';
+    else document.getElementById('llmCard').style.display='none';
+  }).catch(function(){document.getElementById('llmCard').style.display='none';});
 }
 
-function normalizeWeights(holdings) {
-    var total = holdings.reduce(function(sum,h){return sum+(h.weight||0)},0);
-    if (total <=0) return holdings;
-    holdings.forEach(function(h){h.weight=Math.round((h.weight/total)*100*10)/10;});
-    var newTotal = holdings.reduce(function(sum,h){return sum+h.weight},0);
-    if (newTotal !=100) holdings[0].weight+= (100-newTotal);
-    return holdings;
+function showEditHoldings(){_extractedHoldings.length?setDisplay('extractedCard',''):resetToUpload();}
+function switchTab(ev,tab){document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active');});document.querySelectorAll('.tab-content').forEach(function(c){c.classList.remove('active');});ev.target.classList.add('active');document.getElementById('tab-'+tab).classList.add('active');if(tab==='backtestTab'&&_backtestResult)renderBacktestChart(_backtestResult);}
+function resetAll(){
+  _extractedHoldings=[];_confirmedHoldings=[];_analysisResult=null;_backtestResult=null;
+  document.getElementById('resultsArea').style.display='none';document.getElementById('uploadCard').style.display='';
+  document.getElementById('extractedCard').style.display='none';document.getElementById('healthCard').style.display='none';
+  document.getElementById('simulatorCard').style.display='none';document.getElementById('llmCard').style.display='none';
+  document.getElementById('shareSection').style.display='none';clearImage();
 }
-
-function extractFromImage() {
-    var btn = document.getElementById('extractBtn');
-    btn.disabled=true;btn.textContent='识别中...';
-
-    var imgSrc = document.getElementById('previewImg').src;
-    if (!imgSrc) {btn.disabled=false;btn.textContent='识别基金';return;}
-
-    fetch('/api/portfolio-eval/upload-image', {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({image:imgSrc})
-    })
-    .then(function(r){return r.json();})
-    .then(function(d){
-        btn.disabled=false;btn.textContent='识别基金';
-        if(!d.success){
-            alert(d.error || '识别失败，请手动输入');
-            return;
-        }
-        _extractedHoldings = d.holdings || [];
-        _confirmedHoldings = normalizeWeights(_extractedHoldings.slice());
-        document.getElementById('extractNote').textContent = d.extraction_notes || '';
-        showExtractedList();
-        document.getElementById('extractedCard').style.display='';
-        document.getElementById('uploadCard').style.display='none';
-    })
-    .catch(function(){
-        btn.disabled=false;btn.textContent='识别基金';
-        loadDemo();
-    });
-}
-
-function showExtractedList() {
-    var container = document.getElementById('extractedList');
-    var html = '';
-    _confirmedHoldings.forEach(function(h,idx){
-        html += '<div class="fund-card">' +
-            '<div class="fund-header">' +
-                '<div>' +
-                    '<span class="fund-name">' + esc(h.fund_name || h.fund_code) + '</span>' +
-                    '<div class="fund-code">' + esc(h.fund_code) + '</div>' +
-                '</div>' +
-                '<div><input type="number" value="' + h.weight + '" min="1" max="100" style="width:70px;background:rgba(15,23,42,0.8);border:1px solid rgba(148,163,184,0.2);border-radius:6px;color:#F8FAFC;padding:8px;text-align:right;font-family:inherit;font-weight:700;color:#F59E0B" onchange="updateWeight(' + idx + ',this.value)">%</div>' +
-            '</div>' +
-        '</div>';
-    });
-    container.innerHTML = html;
-}
-
-function updateWeight(idx, val) {
-    _confirmedHoldings[idx].weight = parseFloat(val) || 0;
-    _confirmedHoldings = normalizeWeights(_confirmedHoldings);
-    showExtractedList();
-}
-
-function resetToUpload() {
-    document.getElementById('extractedCard').style.display='none';
-    document.getElementById('uploadCard').style.display='';
-    clearImage();
-    document.getElementById('resultsArea').style.display='none';
-}
-
-function analyzePortfolio() {
-    var holdings = _confirmedHoldings.length ? _confirmedHoldings : collectManualInputs();
-    if (!holdings.length){alert('请至少输入一只基金');return;}
-    holdings = normalizeWeights(holdings);
-    _confirmedHoldings = holdings;
-
-    document.getElementById('resultsArea').style.display='';
-    document.getElementById('extractedCard').style.display='none';
-    document.getElementById('uploadCard').style.display='none';
-    document.getElementById('tab-holdings').innerHTML='<div class="loading-state"><div class="spinner"></div><p style="margin-top:12px;">分析中...</p></div>';
-
-    fetch('/api/portfolio-eval/analyze', {
-        method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({holdings:holdings})
-    })
-    .then(function(r){return r.json();})
-    .then(function(d){
-        if(!d.success){
-            document.getElementById('tab-holdings').innerHTML='<div class="error-state"><p>' + esc(d.error) + '</p><button onclick="resetToUpload()">重试</button></div>';
-            return;
-        }
-        _analysisResult = d;
-        renderAnalysis(d);
-        runBacktest(1);
-    })
-    .catch(function(){
-        document.getElementById('tab-holdings').innerHTML='<div class="error-state"><p>请求失败，请检查网络</p><button onclick="analyzePortfolio()">重试</button></div>';
-    });
-}
-
-function renderAnalysis(d) {
-    var mhtml = '<div class="metric-card"><div class="metric-value">' + d.metrics.annual_return.toFixed(1) + '%</div><div class="metric-label">预期年化收益</div></div>' +
-        '<div class="metric-card"><div class="metric-value">' + d.metrics.conservative_max_drawdown.toFixed(1) + '%</div><div class="metric-label">预估最大回撤</div></div>' +
-        '<div class="metric-card"><div class="metric-value">' + d.metrics.sharpe_ratio.toFixed(2) + '</div><div class="metric-label">组合夏普比率</div></div>' +
-        '<div class="metric-card"><div class="metric-value">' + d.metrics.fund_count + '</div><div class="metric-label">持有基金数</div></div>';
-    document.getElementById('metricsGrid').innerHTML=mhtml;
-
-    var hhtml='';
-    d.holdings.forEach(function(h){
-        var info=h.info||{};
-        var ft=info['基金风格']||'';
-        var ar=String(info['年化收益率']||'0%').replace('%','');
-        var md=String(info['最大回撤']||'0%').replace('%','');
-        hhtml+='<div class="fund-card">' +
-            '<div class="fund-header">' +
-                '<div>' +
-                    '<span class="fund-name">' + esc(h.fund_name) + '</span>' +
-                    '<div class="fund-code">' + esc(h.fund_code) + '</div>' +
-                '</div>' +
-                '<div class="fund-weight">' + h.weight.toFixed(1) + '%</div>' +
-            '</div>' +
-            '<div class="fund-metrics">' +
-                '<div class="m"><div class="mv ' + (parseFloat(ar)>=0?'positive':'negative') + '">' + esc(info['年化收益率']||'') + '</div><div style="font-size:11px;color:#94A3B8">年化</div></div>' +
-                '<div class="m"><div class="mv" style="color:#10B981">' + esc(info['最大回撤']||'') + '</div><div style="font-size:11px;color:#94A3B8">回撤</div></div>' +
-                '<div class="m"><div class="mv">' + esc(info['夏普比率']||'') + '</div><div style="font-size:11px;color:#94A3B8">夏普</div></div>' +
-            '</div>' +
-        '</div>';
-    });
-    document.getElementById('tab-holdings').innerHTML=hhtml;
-
-    var shtml='<div class="two-col">';
-    d.style.breakdown.forEach(function(b){
-        shtml+='<div class="sector-item"><span class="sector-name">' + esc(b.style) + '</span><span class="sector-weight">' + b.weight.toFixed(1) + '%</span></div>';
-    });
-    shtml+='</div><div class="help-text">' + (d.style.is_diversified?'风格较为多元，能适应不同市场环境':'风格相对集中，注意单一风格风险') + '</div>';
-    document.getElementById('tab-style').innerHTML=shtml;
-
-    var sechtml='<div class="two-col">';
-    d.sectors.breakdown.slice(0,6).forEach(function(b){
-        sechtml+='<div class="sector-item"><span class="sector-name">' + esc(b.sector) + '</span><span class="sector-weight">' + b.exposure.toFixed(1) + '%</span></div>';
-    });
-    sechtml+='</div><div class="help-text">行业集中度：' + d.sectors.concentration + '（前三大行业合计 ' + d.sectors.concentration_value.toFixed(0) + '%）</div>';
-    document.getElementById('tab-sectors').innerHTML=sechtml;
-
-    var rhtml='';
-    var recs = d.recommendations.list || [];
-    recs.forEach(function(r){
-        var pclass='rec-'+r.priority;
-        rhtml+='<div class="recommendation-card">' +
-            '<span class="rec-priority ' + pclass + '">' + (r.priority==='high'?'高优先级':r.priority==='medium'?'中优先级':'建议') + '</span>' +
-            '<div class="rec-title">' + esc(r.title) + '</div>' +
-            '<div class="rec-content">' + esc(r.content) + '</div>' +
-            (r.impact?'<div class="rec-impact">' + esc(r.impact) + '</div>':'') +
-        '</div>';
-    });
-    if(!recs.length)rhtml='<div class="empty-state"><div class="icon">✨</div><p>当前组合配置良好</p></div>';
-    document.getElementById('recommendationsList').innerHTML=rhtml;
-    document.getElementById('expectedEffect').innerHTML='<strong>预期效果：</strong>' + esc(d.recommendations.summary || '') + '<br><br>' + esc(d.recommendations.expected_effect?.improvement_note || '');
-}
-
-function switchTab(tab) {
-    document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active');});
-    document.querySelectorAll('.tab-content').forEach(function(c){c.classList.remove('active');});
-    event.target.classList.add('active');
-    document.getElementById('tab-'+tab).classList.add('active');
-}
-
-function runBacktest(years) {
-    document.querySelectorAll('.period-btn').forEach(function(b){b.classList.remove('active');if(parseInt(b.dataset.period)===years)b.classList.add('active');});
-    document.getElementById('backtestChart').innerHTML='<div class="loading-state"><div class="spinner" style="margin-top:60px;"></div><p style="margin-top:12px;">回测中...</p></div>';
-
-    fetch('/api/portfolio-eval/backtest', {
-        method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({holdings:_confirmedHoldings,years:years})
-    })
-    .then(function(r){return r.json();})
-    .then(function(d){
-        if(!d.success){
-            document.getElementById('backtestChart').innerHTML='<div class="error-state"><p>' + esc(d.error) + '</p></div>';
-            return;
-        }
-        renderBacktestChart(d);
-        var bmhtml='<div class="metric-card"><div class="metric-value">' + d.total_return.toFixed(2) + '%</div><div class="metric-label">累计收益</div></div>' +
-            '<div class="metric-card"><div class="metric-value">' + d.annualized_return.toFixed(2) + '%</div><div class="metric-label">年化</div></div>' +
-            '<div class="metric-card"><div class="metric-value">' + d.max_drawdown.toFixed(2) + '%</div><div class="metric-label">最大回撤</div></div>' +
-            '<div class="metric-card"><div class="metric-value">' + d.sharpe_ratio.toFixed(2) + '</div><div class="metric-label">夏普比率</div></div>';
-        document.getElementById('backtestMetrics').innerHTML=bmhtml;
-    })
-    .catch(function(){
-        document.getElementById('backtestChart').innerHTML='<div class="error-state"><p>回测失败</p></div>';
-    });
-}
-
-function renderBacktestChart(d) {
-    var dates = d.dates || [];
-    var navs = d.navs || [];
-    var trace = {
-        x:dates, y:navs, mode:'lines', name:'组合净值',
-        line:{color:'#F59E0B',width:2}, fill:'tozeroy', fillcolor:'rgba(245,158,11,0.1)'
-    };
-    var layout = {
-        margin:{l:40,r:20,t:30,b:40}, paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)',
-        font:{family:'-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',color:'#94A3B8',size:11},
-        xaxis:{gridcolor:'rgba(148,163,184,0.1)',linecolor:'rgba(148,163,184,0.2)'},
-        yaxis:{gridcolor:'rgba(148,163,184,0.1)',linecolor:'rgba(148,163,184,0.2)'},
-        showlegend:false, height:360
-    };
-    Plotly.newPlot('backtestChart',[trace],layout,{responsive:true,displayModeBar:false});
-}
-
-function resetAll() {
-    _extractedHoldings=[];
-    _confirmedHoldings=[];
-    _analysisResult=null;
-    document.getElementById('resultsArea').style.display='none';
-    document.getElementById('uploadCard').style.display='';
-    document.getElementById('extractedCard').style.display='none';
-    clearImage();
-}
+function setDisplay(id,v){document.getElementById(id).style.display=v;}
 </script>
 </body>
 </html>

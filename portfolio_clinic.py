@@ -61,6 +61,9 @@ class PortfolioMetrics:
     conservative_max_drawdown: float = 0.0
     fund_count: int = 0
 
+    def to_dict(self):
+        return asdict(self)
+
 @dataclass
 class ClinicReport:
     holdings: list = field(default_factory=list)
