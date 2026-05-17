@@ -679,13 +679,18 @@ class PortfolioClinic:
                         break
                 break
 
-        # ── 沪深300基准 ──
-        benchmark_navs = PortfolioClinic._fetch_csi300(years)
-        if benchmark_navs:
-            b_dates = sorted(set(all_dates) & set(b.nav_date for b in benchmark_navs))
-            # 对齐日期
-            benchmark_navs_aligned = [b.nav for b in sorted(benchmark_navs,
-                key=lambda x: x.nav_date) if b.nav_date in [p['date'] for p in portfolio_nav]]
+        # ── 沪深300基准（对齐到组合净值的日期序列）──
+        benchmark_navs = None
+        csi300 = PortfolioClinic._fetch_csi300(years)
+        if csi300:
+            csi_map = {b.nav_date: b.nav for b in csi300}
+            benchmark_navs = [csi_map.get(p['date']) for p in portfolio_nav]
+            # 去掉头部 None 直到第一个有效值，用于前端归一化
+            first_valid = next((i for i, v in enumerate(benchmark_navs) if v is not None), 0)
+            if first_valid > 0:
+                benchmark_navs = benchmark_navs[first_valid:]
+                portfolio_nav = portfolio_nav[first_valid:]
+                navs = [p['nav'] for p in portfolio_nav]
 
         return BacktestResult(
             dates=[p['date'] for p in portfolio_nav],

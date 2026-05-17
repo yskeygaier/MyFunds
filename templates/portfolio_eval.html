@@ -484,9 +484,9 @@ function showSimulator(holdings){
 }
 function simUpdate(){
   var sliders=document.querySelectorAll('#simulatorContent input[type=range]'),total=0,weights={};
-  sliders.forEach(function(s){var idx=parseInt(s.dataset.idx),v=parseFloat(s.value);weights[idx]=v;total+=v;document.getElementById('simVal'+idx).textContent=v.toFixed(1)+'%';});
-  if(total<=0)return;
-  for(var k in weights)weights[k]=weights[k]/total*100;
+  sliders.forEach(function(s){var idx=parseInt(s.dataset.idx),v=parseFloat(s.value);weights[idx]=v;total+=v;});
+  if(total>100){var scale=100/total;sliders.forEach(function(s){var idx=parseInt(s.dataset.idx);weights[idx]=Math.round(weights[idx]*scale);});total=100;}
+  sliders.forEach(function(s){var idx=parseInt(s.dataset.idx);document.getElementById('simVal'+idx).textContent=weights[idx].toFixed(1)+'%';});
   var maxW=0;for(var k in weights)if(weights[k]>maxW)maxW=weights[k];
   var m=_analysisResult.metrics,dd=m.conservative_max_drawdown,sp=m.sharpe_ratio,rt=m.annual_return;
   var div=maxW>40?0:maxW>30?15:maxW>20?24:30,risk=dd<=10?30:dd<=20?24:dd<=30?18:12,rsi=sp>=1?25:sp>=0.5?15:sp>=0?7:0,stl=_analysisResult.style.is_diversified?15:7;
@@ -495,7 +495,7 @@ function simUpdate(){
 }
 
 // Share
-function showShareOptions(d){document.getElementById('shareSection').style.display=(d.share_id?'':'none');if(d.share_id)document.getElementById('shareUrlInput').value=window.location.origin+'/report/'+d.share_id;}
+function showShareOptions(d){document.getElementById('shareSection').style.display='none';}
 function copyShareUrl(){var inp=document.getElementById('shareUrlInput');inp.select();document.execCommand('copy');var btn=document.getElementById('shareBtn');btn.textContent='已复制';setTimeout(function(){btn.textContent='复制分享链接';},2000);}
 function deleteShare(){document.getElementById('shareSection').style.display='none';document.getElementById('shareBtn').textContent='已删除';}
 
