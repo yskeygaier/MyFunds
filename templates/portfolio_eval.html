@@ -101,6 +101,12 @@ h3{font-size:15px;margin-bottom:12px;color:#CBD5E1}
 .loading-state{text-align:center;padding:40px 16px;color:#94A3B8}
 .error-state{text-align:center;padding:40px 24px;color:#94A3B8}
 .error-state button{background:rgba(245,158,11,0.15);color:#F59E0B;border:1px solid rgba(245,158,11,0.3);border-radius:6px;padding:8px 20px;margin-top:12px;font-size:13px;cursor:pointer;font-family:inherit}
+/* Loading overlay */
+.loading-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,0.85);z-index:9999;display:none;align-items:center;justify-content:center;flex-direction:column;gap:16px}
+.loading-overlay.active{display:flex}
+.loading-overlay .spinner{width:40px;height:40px;border-width:3px}
+.loading-overlay .status-text{font-size:15px;color:#F8FAFC}
+.loading-overlay .sub-text{font-size:13px;color:#94A3B8}
 @media(max-width:480px){
   .gauge-wrap{flex-direction:column;text-align:center}
   .sim-row label{width:80px;font-size:12px}
@@ -108,6 +114,11 @@ h3{font-size:15px;margin-bottom:12px;color:#CBD5E1}
 </style>
 </head>
 <body>
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="spinner"></div>
+  <div class="status-text" id="loadingStatus">处理中...</div>
+  <div class="sub-text" id="loadingSub">请稍候</div>
+</div>
 <div class="container">
   <div class="nav-top">
     <a href="/">← 返回主页</a><span style="color:#64748B;font-size:12px;">|</span>
@@ -294,6 +305,8 @@ function fmtNum(v){return v!=null?v.toFixed(1):'--';}
 
 // Upload
 var uploadArea=document.getElementById('uploadArea'),imageInput=document.getElementById('imageInput');
+function showLoading(status,sub){document.getElementById('loadingOverlay').classList.add('active');document.getElementById('loadingStatus').textContent=status||'处理中...';document.getElementById('loadingSub').textContent=sub||'';}
+function hideLoading(){document.getElementById('loadingOverlay').classList.remove('active');}
 // 点击上传区域(非按钮区域)也触发文件选择
 uploadArea.addEventListener('click',function(e){if(e.target===uploadArea||e.target.closest('.upload-text'))imageInput.click();});
 uploadArea.ondragover=function(e){e.preventDefault();uploadArea.classList.add('dragover');};
@@ -345,18 +358,18 @@ function normalizeWeights(holdings){
 
 // Extraction
 function extractFromImage(){
-  var btn=document.getElementById('extractBtn');btn.disabled=true;btn.textContent='识别中...';
   var imgSrc=document.getElementById('previewImg').src;
-  if(!imgSrc){btn.disabled=false;btn.textContent='识别基金';return;}
+  if(!imgSrc){return;}
+  showLoading('正在识别基金...','AI 正在分析你的持仓截图，请稍候');
   fetch('/api/portfolio-eval/upload-image',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image:imgSrc})})
   .then(function(r){return r.json();}).then(function(d){
-    btn.disabled=false;btn.textContent='识别基金';
+    hideLoading();
     if(!d.success){showUploadError(d.error||'识别失败');return;}
     _extractedHoldings=d.holdings||[];
     _confirmedHoldings=normalizeWeights(JSON.parse(JSON.stringify(_extractedHoldings)));
     document.getElementById('extractNote').textContent=d.extraction_notes||'';
     showExtractedList();document.getElementById('extractedCard').style.display='';document.getElementById('uploadCard').style.display='none';
-  }).catch(function(){btn.disabled=false;btn.textContent='识别基金';showUploadError('请求失败');});
+  }).catch(function(){hideLoading();showUploadError('请求失败');});
 }
 function showExtractedList(){
   var container=document.getElementById('extractedList'),html='';
@@ -374,12 +387,16 @@ function resetToUpload(){document.getElementById('extractedCard').style.display=
 function analyzePortfolio(){
   var holdings=_confirmedHoldings.length?_confirmedHoldings:collectManualInputs();
   if(!holdings.length){alert('请至少输入一只基金');return;}
+  var total=holdings.reduce(function(s,h){return s+(h.weight||0);},0);
+  if(Math.abs(total-100)>1){alert('各基金占比总和应为100%，当前合计'+total.toFixed(0)+'%。请调整后再提交');return;}
   holdings=normalizeWeights(holdings);_confirmedHoldings=holdings;
+  showLoading('正在分析组合...','获取基金数据和计算指标，请稍候');
   document.getElementById('resultsArea').style.display='';
   document.getElementById('extractedCard').style.display='none';document.getElementById('uploadCard').style.display='none';
   document.getElementById('tab-holdings').innerHTML='<div class="loading-state"><div class="spinner"></div><p style="margin-top:12px;">分析中...</p></div>';
   fetch('/api/portfolio-eval/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({holdings:holdings})})
   .then(function(r){return r.json();}).then(function(d){
+    hideLoading();
     if(!d.success){document.getElementById('tab-holdings').innerHTML='<div class="error-state"><p>'+esc(d.error)+'</p><button onclick="resetToUpload()">重试</button></div>';return;}
     _analysisResult=d;renderAnalysis(d);renderHealthScore(d);runBacktest(1);loadLlmSummary(holdings);showSimulator(holdings);showShareOptions(d);
   }).catch(function(){document.getElementById('tab-holdings').innerHTML='<div class="error-state"><p>请求失败</p><button onclick="analyzePortfolio()">重试</button></div>';});

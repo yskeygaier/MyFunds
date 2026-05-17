@@ -749,12 +749,11 @@ class PortfolioClinic:
         holdings_text = '\n'.join(holding_lines)
 
         prompt = (
-            "你是一个基金组合诊断助手。根据以下持仓数据，输出三段式调仓方案。要求具体：给出基金代码和调整比例。\n\n"
+            "你是一个基金组合诊断助手。根据以下数据输出三段式方案，每条建议要具体到基金代码和比例。\n"
             f"健康分{report.health_score}/100 年化{metrics.annual_return if metrics else 'N/A'}% "
             f"最大回撤{metrics.conservative_max_drawdown if metrics else 'N/A'}% 夏普{metrics.sharpe_ratio if metrics else 'N/A'}\n"
-            f"持仓{len(report.holdings)}只：\n"
-            f"{holdings_text}\n\n"
-            f"格式：\n【发现的问题】\n【建议方案】（每项含基金代码和调整比例，如将161725从30%降到15%，新增270002占20%）\n【预期效果】"
+            f"持仓{len(report.holdings)}只:\n{holdings_text}\n\n"
+            "格式:\n【发现的问题】\n【建议方案】(含基金代码和调整比例)\n【预期效果】"
         )
 
         import urllib.request
