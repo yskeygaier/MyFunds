@@ -500,23 +500,32 @@ class PortfolioClinic:
         missing_funds = []
 
         def _fetch(h):
-            try:
-                info = fetch_fund_info(h['fund_code'])
-                if info:
-                    return {**h, 'info': info}
-            except Exception as e:
-                print(f"[Clinic] 获取{h['fund_code']}失败: {e}")
+            code = h['fund_code']
+            for attempt in range(2):
+                try:
+                    info = fetch_fund_info(code)
+                    if info:
+                        return {**h, 'info': info}
+                except Exception as e:
+                    if attempt == 0:
+                        import time; time.sleep(1)
+                        continue
+                    print(f"[Clinic] 获取{code}失败(重试{attempt}次): {e}")
             return None
 
         with concurrent.futures.ThreadPoolExecutor(
-                max_workers=min(len(cleaned), 5)) as executor:
-            results = executor.map(_fetch, cleaned)
-
-        for h, r in zip(cleaned, results):
-            if r:
-                fund_info_list.append(r)
-            else:
-                missing_funds.append(h['fund_code'])
+                max_workers=min(len(cleaned), 8)) as executor:
+            fut_map = {executor.submit(_fetch, h): h for h in cleaned}
+            for f in concurrent.futures.as_completed(fut_map):
+                h = fut_map[f]
+                try:
+                    r = f.result(timeout=35)
+                    if r:
+                        fund_info_list.append(r)
+                    else:
+                        missing_funds.append(h["fund_code"])
+                except Exception:
+                    missing_funds.append(h["fund_code"])
 
         report = ClinicReport(
             holdings=fund_info_list,
