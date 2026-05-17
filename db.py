@@ -73,16 +73,31 @@ class DatabasePool:
     def __init__(self, pool_size=5):
         self._queue = queue.Queue(maxsize=pool_size)
         self._size = pool_size
-        for _ in range(pool_size):
-            self._queue.put(_create_mysql_conn())
+        self._mysql_available = False
+        # 测试连接是否可用
+        try:
+            test_conn = _create_mysql_conn()
+            test_conn.close()
+            self._mysql_available = True
+            # 仅在 MySQL 可用时填充连接池
+            for _ in range(pool_size):
+                self._queue.put(_create_mysql_conn())
+        except Exception as e:
+            print(f"[db] MySQL not available: {e}, will use SQLite-only mode")
+            self._mysql_available = False
 
     def get_connection(self):
         """获取连接（阻塞，线程安全）"""
+        if not self._mysql_available:
+            raise RuntimeError("MySQL not available, use SQLite instead")
         conn = self._queue.get()
         return _PooledConn(conn, self._queue)
 
     def execute(self, sql, params=None, fetch=True):
         """统一查询入口：MySQL 优先 → SQLite 降级"""
+        if not self._mysql_available:
+            return _sqlite_execute(sql, params, fetch)
+
         conn = None
         try:
             conn = self.get_connection()
@@ -116,6 +131,10 @@ class DatabasePool:
 
     def ensure_indexes(self):
         """启动时自动创建缺失索引（幂等）"""
+        if not self._mysql_available:
+            print("[db] MySQL not available, skipping index creation")
+            return
+
         indexes = [
             ("idx_sub_out_trade_no", "user_subscriptions", "out_trade_no"),
             ("idx_sub_poll_token", "user_subscriptions", "poll_token"),

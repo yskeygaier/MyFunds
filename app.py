@@ -6,6 +6,13 @@ import os
 import sys
 import pymysql
 
+# 加载 .env 文件（dotenv 已安装）
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 # ── 分析报告生成锁（防止同一基金重复生成）──────────────────────────────────
 # 键：基金代码，值：生成任务状态 'generating' 或 None
 REPORT_GENERATING = {}
@@ -248,6 +255,9 @@ if __name__ == '__main__':
         # 注册公开路由（无需登录）+ 教练向导
         from routes_public import public_bp
         app.register_blueprint(public_bp)
+        # 注册组合评估路由
+        from routes_portfolio_eval import portfolio_eval_bp
+        app.register_blueprint(portfolio_eval_bp)
         # 教练向导页面
         @app.route('/favicon.ico')
         def favicon():
@@ -255,6 +265,9 @@ if __name__ == '__main__':
         @app.route('/guide')
         def guide_page():
             return render_template('guide.html')
+        @app.route('/portfolio-eval')
+        def portfolio_eval_page():
+            return render_template('portfolio_eval.html')
         # 注册基金信息 + 经理 + 估值蓝图
         from routes_fund import fund_bp
         app.register_blueprint(fund_bp)

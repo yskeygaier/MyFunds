@@ -11,3 +11,6 @@ test-results/
 .claude/
 fund_data/
 .gstack/
+.env
+wireframe-portfolio-report.png
+阶段进展.txt
