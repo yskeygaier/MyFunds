@@ -274,7 +274,8 @@ function fmtNum(v){return v!=null?v.toFixed(1):'--';}
 
 // Upload
 var uploadArea=document.getElementById('uploadArea'),imageInput=document.getElementById('imageInput');
-uploadArea.onclick=function(){imageInput.click();};
+// 点击上传区域(非按钮区域)也触发文件选择
+uploadArea.addEventListener('click',function(e){if(e.target===uploadArea||e.target.closest('.upload-text'))imageInput.click();});
 uploadArea.ondragover=function(e){e.preventDefault();uploadArea.classList.add('dragover');};
 uploadArea.ondragleave=function(){uploadArea.classList.remove('dragover');};
 uploadArea.ondrop=function(e){e.preventDefault();uploadArea.classList.remove('dragover');if(e.dataTransfer.files[0])handleFile(e.dataTransfer.files[0]);};
