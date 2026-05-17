@@ -769,7 +769,7 @@ class PortfolioClinic:
 
         try:
             resp = urllib.request.urlopen(
-                req, json.dumps(req_data).encode('utf-8'), timeout=90)
+                req, json.dumps(req_data).encode('utf-8'), timeout=120)
             result = json.loads(resp.read().decode('utf-8'))
             return result['choices'][0]['message']['content']
         except Exception as e:
