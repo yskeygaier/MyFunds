@@ -727,12 +727,41 @@ class PortfolioClinic:
 
     @staticmethod
     def generate_llm_summary(report: ClinicReport) -> str:
-        """生成组合诊断摘要（本地生成，不依赖LLM，瞬间完成）"""
+        """生成组合诊断摘要 — 优先调文本LLM，失败则本地生成"""
         metrics = report.metrics
         if not metrics:
             return ''
 
-        # 找出拖后腿的基金
+        # ── 尝试文本LLM ──
+        if DOUBAO_API_KEY and DOUBAO_TEXT_MODEL:
+            hl = []
+            for h in report.holdings:
+                info = h.get('info', {})
+                hl.append(
+                    f"{h['fund_code']} {info.get('基金简称', h.get('fund_name', h['fund_code']))} "
+                    f"{h['weight']}% 年化{info.get('年化收益率','--')} 回撤{info.get('最大回撤','--')}"
+                )
+            prompt = (
+                "基金诊断，输出三段式方案含基金代码和比例。\n"
+                f"健康分{report.health_score} 年化{metrics.annual_return}% "
+                f"回撤{metrics.conservative_max_drawdown}% 夏普{metrics.sharpe_ratio}\n"
+                f"持仓:\n" + "\n".join(hl) + "\n\n格式:\n【发现的问题】\n【建议方案】\n【预期效果】"
+            )
+            import urllib.request
+            req = urllib.request.Request(DOUBAO_ENDPOINT)
+            req.add_header('Content-Type', 'application/json')
+            req.add_header('Authorization', f'Bearer {DOUBAO_API_KEY}')
+            try:
+                resp = urllib.request.urlopen(req, json.dumps({
+                    'model': DOUBAO_TEXT_MODEL, 'messages': [{'role': 'user', 'content': prompt}],
+                    'max_tokens': 1024, 'temperature': 0.5
+                }).encode('utf-8'), timeout=60)
+                content = json.loads(resp.read())['choices'][0]['message']['content']
+                if content: return content
+            except Exception as e:
+                print(f"[LLM] 文本模型失败，降级本地: {e}")
+
+        # ── 本地生成（降级）──
         bad_funds = []
         good_funds = []
         for h in report.holdings:
