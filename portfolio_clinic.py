@@ -480,7 +480,7 @@ class PortfolioClinic:
             if weight <= 0:
                 continue
             cleaned.append({'fund_code': code, 'fund_name': h.get('fund_name', ''),
-                            'weight': weight, 'amount': float(h.get('amount', 0))})
+                            'weight': weight, 'amount': float(h['amount']) if h.get('amount') is not None else 0})
 
         if not cleaned:
             return ClinicReport(holdings=[])
