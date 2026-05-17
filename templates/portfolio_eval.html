@@ -192,24 +192,31 @@ h3{font-size:15px;margin-bottom:12px;color:#CBD5E1}
       <div class="metrics-grid" id="metricsGrid"></div>
     </div>
 
-    <!-- Holdings + Backtest + Sectors tabs -->
+    <!-- 持仓明细 -->
     <div class="card">
-      <div class="tabs">
-        <div class="tab active" onclick="switchTab(event,'holdings')">持仓明细</div>
-        <div class="tab" onclick="switchTab(event,'backtestTab')">历史回测</div>
-        <div class="tab" onclick="switchTab(event,'sectors')">行业分布</div>
+      <span class="section-badge">持仓明细</span>
+      <h2>每只基金表现</h2>
+      <div id="tab-holdings"></div>
+    </div>
+
+    <!-- 历史回测 -->
+    <div class="card">
+      <span class="section-badge">历史回测</span>
+      <h2>组合净值走势</h2>
+      <div class="period-selector">
+        <button class="period-btn active" data-period="1" onclick="runBacktest(1)">近 1 年</button>
+        <button class="period-btn" data-period="2" onclick="runBacktest(2)">近 2 年</button>
+        <button class="period-btn" data-period="3" onclick="runBacktest(3)">近 3 年</button>
       </div>
-      <div class="tab-content active" id="tab-holdings"></div>
-      <div class="tab-content" id="tab-backtestTab">
-        <div class="period-selector">
-          <button class="period-btn active" data-period="1" onclick="runBacktest(1)">近 1 年</button>
-          <button class="period-btn" data-period="2" onclick="runBacktest(2)">近 2 年</button>
-          <button class="period-btn" data-period="3" onclick="runBacktest(3)">近 3 年</button>
-        </div>
-        <div class="chart-wrap"><div id="backtestChart"></div></div>
-        <div class="metrics-grid" id="backtestMetrics"></div>
-      </div>
-      <div class="tab-content" id="tab-sectors"></div>
+      <div class="chart-wrap"><div id="backtestChart"></div></div>
+      <div class="metrics-grid" id="backtestMetrics"></div>
+    </div>
+
+    <!-- 行业分布 -->
+    <div class="card">
+      <span class="section-badge">行业分布</span>
+      <h2>行业暴露度分析</h2>
+      <div id="tab-sectors"></div>
     </div>
 
     <!-- Recommendations -->
@@ -504,7 +511,6 @@ function loadLlmSummary(holdings){
 }
 
 function showEditHoldings(){_extractedHoldings.length?setDisplay('extractedCard',''):resetToUpload();}
-function switchTab(ev,tab){document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active');});document.querySelectorAll('.tab-content').forEach(function(c){c.classList.remove('active');});ev.target.classList.add('active');document.getElementById('tab-'+tab).classList.add('active');if(tab==='backtestTab'&&_backtestResult)renderBacktestChart(_backtestResult);}
 function resetAll(){
   _extractedHoldings=[];_confirmedHoldings=[];_analysisResult=null;_backtestResult=null;
   document.getElementById('resultsArea').style.display='none';document.getElementById('uploadCard').style.display='';
