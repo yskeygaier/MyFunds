@@ -75,6 +75,7 @@ class ClinicReport:
     style: dict = field(default_factory=dict)
     sectors: dict = field(default_factory=dict)
     risk: dict = field(default_factory=dict)
+    portfolio_type: str = ''
     recommendations: dict = field(default_factory=dict)
     health_score: float = 0.0
     missing_funds: list = field(default_factory=list)
@@ -538,6 +539,9 @@ class PortfolioClinic:
             report.recommendations = recs
             report.health_score = PortfolioClinic._calc_health_score(
                 metrics, risk, style, fund_info_list)
+            report.portfolio_type = PortfolioClinic.classify_portfolio(
+                risk.get('level', u'中等风险'),
+                metrics.get('conservative_max_drawdown', 20))
 
         return report
 
@@ -577,6 +581,20 @@ class PortfolioClinic:
         score_style = round(score_style * 1.5)
 
         return min(round(score_div + score_risk + score_sharpe + score_style), 100)
+
+    @staticmethod
+    def classify_portfolio(risk_level: str, dd: float) -> str:
+        """组合风格分类：保守/稳健/平衡/成长/激进"""
+        if '低风险' in risk_level or dd <= 10:
+            return '稳健型'
+        elif '中低风险' in risk_level or dd <= 20:
+            return '稳健型'
+        elif '中等风险' in risk_level or dd <= 30:
+            return '平衡型'
+        elif '中高风险' in risk_level or dd <= 45:
+            return '成长型'
+        else:
+            return '激进型'
 
     @staticmethod
     def backtest(holdings: list, years=3) -> BacktestResult:
