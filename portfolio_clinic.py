@@ -31,6 +31,10 @@ DOUBAO_API_KEY = os.environ.get('DOUBAO_API_KEY', '')
 DOUBAO_MODEL = os.environ.get('DOUBAO_MODEL', '')
 DOUBAO_ENDPOINT = os.environ.get('DOUBAO_ENDPOINT',
     'https://ark.cn-beijing.volces.com/api/v3/chat/completions')
+# LLM摘要使用纯文本模型（不要用视觉模型，视觉模型慢3-5倍）
+# 默认从 DOUBAO_MODEL 去掉 -vision 后缀得到纯文本版本
+_DEFAULT_TEXT_MODEL = DOUBAO_MODEL.replace('-vision-250815', '').replace('vision-', '')
+DOUBAO_TEXT_MODEL = os.environ.get('DOUBAO_TEXT_MODEL', _DEFAULT_TEXT_MODEL)
 
 # ── 图片处理参数 ──
 MAX_IMAGE_SIZE = 1000       # 最长边像素
@@ -723,55 +727,92 @@ class PortfolioClinic:
 
     @staticmethod
     def generate_llm_summary(report: ClinicReport) -> str:
-        """生成LLM诊断摘要（独立步骤，异步加载）
-        包含具体持仓数据和可落地的调整方案（含具体基金代码和比例）"""
-        if not DOUBAO_API_KEY or not DOUBAO_MODEL:
+        """生成组合诊断摘要（本地生成，不依赖LLM，瞬间完成）"""
+        metrics = report.metrics
+        if not metrics:
             return ''
 
-        metrics = report.metrics
-
-        # 构建持仓明细表
-        holding_lines = []
+        # 找出拖后腿的基金
+        bad_funds = []
+        good_funds = []
         for h in report.holdings:
             info = h.get('info', {})
-            code = h.get('fund_code', '')
-            name = info.get('基金简称', h.get('fund_name', code))
-            weight = h.get('weight', 0)
-            ar = info.get('年化收益率', '--')
-            md = info.get('最大回撤', '--')
-            sharpe = info.get('夏普比率', '--')
-            style = info.get('基金风格', '--')
-            sector = info.get('第一大行业', '--')
-            holding_lines.append(
-                f"  {code} {name} 权重{weight}% 年化{ar} 回撤{md} 夏普{sharpe} 风格{style} 行业{sector}"
-            )
+            ar_str = str(info.get('年化收益率', '0%')).replace('%', '')
+            try:
+                ar = float(ar_str)
+            except ValueError:
+                ar = 0
+            name = info.get('基金简称', h.get('fund_name', h['fund_code']))
+            code = h['fund_code']
+            weight = h['weight']
+            if ar < 0 and weight > 10:
+                bad_funds.append((code, name, weight, ar, info.get('最大回撤', '--')))
+            elif ar > 10:
+                good_funds.append((code, name, weight, ar))
 
-        holdings_text = '\n'.join(holding_lines)
+        lines = []
+        lines.append('【发现的问题】')
+        dd = metrics.conservative_max_drawdown
+        if dd > 30:
+            lines.append(f'组合最大回撤{dd}%偏高，波动较大。')
+        else:
+            lines.append(f'组合最大回撤{dd}%，风险水平{'偏高' if dd > 20 else '适中'}。')
 
-        prompt = (
-            "你是一个基金组合诊断助手。根据以下数据输出三段式方案，每条建议要具体到基金代码和比例。\n"
-            f"健康分{report.health_score}/100 年化{metrics.annual_return if metrics else 'N/A'}% "
-            f"最大回撤{metrics.conservative_max_drawdown if metrics else 'N/A'}% 夏普{metrics.sharpe_ratio if metrics else 'N/A'}\n"
-            f"持仓{len(report.holdings)}只:\n{holdings_text}\n\n"
-            "格式:\n【发现的问题】\n【建议方案】(含基金代码和调整比例)\n【预期效果】"
-        )
+        sr = metrics.sharpe_ratio
+        if sr < 0.5:
+            lines.append(f'夏普比率{sr}偏低，风险调整后收益有待改善。')
+        else:
+            lines.append(f'夏普比率{sr}，风险调整后收益{'良好' if sr > 0.8 else '尚可'}。')
 
-        import urllib.request
-        req_data = {
-            'model': DOUBAO_MODEL,
-            'messages': [{'role': 'user', 'content': prompt}],
-            'max_tokens': 1024, 'temperature': 0.5
-        }
+        if bad_funds:
+            for code, name, w, ar, md in bad_funds[:3]:
+                lines.append(f'「{name}({code})」占{w}%但年化{ar}%，拖累组合表现。')
 
-        req = urllib.request.Request(DOUBAO_ENDPOINT)
-        req.add_header('Content-Type', 'application/json')
-        req.add_header('Authorization', f'Bearer {DOUBAO_API_KEY}')
+        lines.append('')
+        lines.append('【建议方案】')
 
-        try:
-            resp = urllib.request.urlopen(
-                req, json.dumps(req_data).encode('utf-8'), timeout=120)
-            result = json.loads(resp.read().decode('utf-8'))
-            return result['choices'][0]['message']['content']
-        except Exception as e:
-            print(f"[LLMSummary] 失败: {e}")
-            return ''
+        # 基于系统推荐生成具体方案
+        recs = report.recommendations.get('list', [])
+        has_reduce = False
+        has_add_bond = False
+        for r in recs:
+            if r.get('type') == 'concentration' and r.get('action') == 'reduce_weight':
+                target = r.get('target_fund', '')
+                if target and bad_funds:
+                    for code, name, w, ar, md in bad_funds:
+                        if code == target:
+                            suggested = r.get('suggested_weight', 20)
+                            reduce_by = w - suggested
+                            lines.append(f'• 将「{name}({code})」从{w}%降低到{suggested}%，释放约{reduce_by:.0f}%仓位。')
+                            has_reduce = True
+                            break
+                if not has_reduce:
+                    lines.append(f'• 适当降低占比最高的基金权重（>30%部分），分散到2-3只不同风格基金。')
+            elif r.get('type') == 'risk' and r.get('action') == 'add_bonds':
+                alloc = r.get('suggested_allocation', '15%-25%')
+                lines.append(f'• 新增债券型基金{alloc}，如天弘永利债券(420102)或富国天利增长债券(000198)，降低组合波动。')
+                has_add_bond = True
+            elif r.get('type') == 'sector':
+                lines.append(f'• 增加不同行业基金配置，避免过度集中于单一行业。如天弘沪深300ETF联接C(005918)可作宽基底仓。')
+            elif r.get('type') == 'style':
+                lines.append(f'• 补充不同风格基金（如价值型、均衡型），提高市场适应性。')
+            elif r.get('type') == 'count' and r.get('action') == 'consolidate':
+                lines.append(f'• 基金数量偏多（{len(report.holdings)}只），建议精选4-6只核心基金。')
+
+        if not has_add_bond and dd > 25:
+            lines.append(f'• 建议增加15%-25%债券型基金对冲波动，如富国天利增长债券(000198)或广发稳健增长(270002)。')
+
+        lines.append('')
+        lines.append('【预期效果】')
+        eff = report.recommendations.get('expected_effect', {})
+        orig_dd = eff.get('original_max_drawdown', dd)
+        exp_dd = eff.get('expected_max_drawdown', dd)
+        orig_ret = eff.get('original_annual_return', metrics.annual_return)
+        exp_ret = eff.get('expected_annual_return', metrics.annual_return)
+        lines.append(f'• 回撤：从-{orig_dd}%降至约-{exp_dd}%')
+        lines.append(f'• 收益：年化从{orig_ret}%调整至约{exp_ret}%')
+        if sr < 0.5 and has_add_bond:
+            lines.append(f'• 夏普比率有望从{sr}提升至0.5以上，风险收益比改善。')
+        lines.append(f'• 调整后健康分预计从{report.health_score}提升至70分以上。')
+
+        return '\n'.join(lines)
